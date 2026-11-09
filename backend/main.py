@@ -302,6 +302,8 @@ class WilayahIn(BaseModel):
 async def create_wilayah(body: WilayahIn, ctx: Ctx = Depends(require_login)):
     if not can_edit(ctx):
         err(403, "Role Anda tidak dapat menambah wilayah")
+    if any(x["nama"].strip().lower() == body.nama.strip().lower() for x in await db.find("wilayah")):
+        err(400, "Nama wilayah sudah ada. Buka wilayah tersebut atau pakai nama lain.")
     w = {"id": nid(), **body.model_dump(), "photos": [], "createdAt": iso(), "updatedAt": iso(), "updatedBy": ctx.member["id"]}
     await db.put("wilayah", w)
     return w
@@ -334,6 +336,8 @@ async def wilayah_alternatif(wid: str, body: AltIn, ctx: Ctx = Depends(require_l
     w = await db.get("wilayah", wid)
     if not w:
         err(404, "Wilayah tidak ditemukan")
+    if any(x["nama"].strip().lower() == body.namaAlternatif.strip().lower() for x in await db.find("wilayah")):
+        err(400, "Nama wilayah alternatif sudah ada. Pakai nama lain.")
     await db.update("wilayah", wid, {"status": "alternatif", "catatan": (w.get("catatan", "") + f"\nDiganti wilayah alternatif: {body.namaAlternatif}. {body.catatan}").strip(), "updatedAt": iso(), "updatedBy": ctx.member["id"]})
     nw = {"id": nid(), "nama": body.namaAlternatif, "kota": body.kota or w.get("kota", ""), "cluster": w.get("cluster", "Lainnya"),
           "spvId": w.get("spvId", ""), "surveyorId": w.get("surveyorId", ""), "status": "dibagi", "targetKios": w.get("targetKios", 1),

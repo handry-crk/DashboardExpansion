@@ -193,7 +193,7 @@
     // wilayah table
     const rows = S.wilayah.slice().sort((a, b) => a.nama.localeCompare(b.nama));
     $("tWil").innerHTML = `<thead><tr><th>Wilayah</th><th>Kota</th><th>SPV</th><th>Surveyor</th><th>Status</th><th class="r">Kios</th><th>Catatan</th></tr></thead><tbody>` +
-      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span></td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="Catatan" class="note">${esc(w.catatan)}</td></tr>`).join("")
+      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span></td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
         : `<tr><td colspan="7"><div class="empty">Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).</div></td></tr>`) + `</tbody>`;
     $("tWil").querySelectorAll("tr[data-w]").forEach((tr) => (tr.onclick = () => openWil(tr.dataset.w)));
     renderPipeline();
@@ -203,7 +203,7 @@
 
   function card(k) {
     const pct = Math.round((k.stage / 14) * 100);
-    return `<div class="kios ${k.statusKey}" data-k="${k.id}"><b>${esc(k.nama)} <span class="note">${esc(k.kode)}</span></b><small>${esc(k.wilayahNama)} · ${esc(k.stageName)}</small><small>PIC ${esc(k.stagePic)} · target ${fmtM(k.targetBuka)} · ${k.daysInStage} hari di tahap</small><div class="row" style="margin-top:4px;gap:6px">${stPill(k)}${flags(k)}</div><div class="prog"><i style="width:${pct}%"></i></div></div>`;
+    return `<div class="kios ${k.statusKey}" data-k="${k.id}"><b>${esc(k.nama)} <span class="note">${esc(k.kode)}</span></b><small>${esc(k.wilayahNama)} · ${esc(k.stageName)}</small><small>${k.stage === 14 ? `Buka ${fmtD(k.openedAt)} · target ${fmtM(k.targetBuka)}` : `PIC ${esc(k.stagePic)} · target ${fmtM(k.targetBuka)} · ${k.daysInStage} hari di tahap`}</small><div class="row" style="margin-top:4px;gap:6px">${stPill(k)}${flags(k)}</div><div class="prog"><i style="width:${pct}%"></i></div></div>`;
   }
 
   function renderPipeline() {
@@ -219,8 +219,8 @@
   }
 
   // ------------------------------------------------------------ drawers
-  function closeDr() { $("ov").classList.remove("on"); $("dr").classList.remove("on"); }
-  function showDr(html) { $("dr").innerHTML = html; $("ov").classList.add("on"); $("dr").classList.add("on"); $("dr").scrollTop = 0; }
+  function closeDr() { $("ov").classList.remove("on"); $("dr").classList.remove("on"); document.body.classList.remove("lock"); }
+  function showDr(html) { $("dr").innerHTML = html; $("ov").classList.add("on"); $("dr").classList.add("on"); $("dr").scrollTop = 0; document.body.classList.add("lock"); }
 
   async function openKios(id) {
     const k = id ? S.kios.find((x) => x.id === id) : null;
@@ -233,7 +233,7 @@
       <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
       ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Next stage:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
-        <div class="row" style="margin-top:8px"><input id="sNote" class="inl" style="flex:1;min-width:160px" placeholder="Catatan (wajib bila kembali / lompat)">
+        <div class="row" style="margin-top:8px"><input id="sNote" class="inl" style="flex:1;min-width:160px" placeholder="Catatan update — wajib untuk Blocked / Perlu Perhatian / kembali / alternatif">
         ${mayAdvance ? `<button class="btn s" id="bNext">Next stage →</button>` : `<span class="note">Hanya ${esc(st.pic)} / SPV yang dapat memajukan stage</span>`}
         ${mayBack ? `<button class="btn o s" id="bBack">← Kembali</button>` : ""}</div>
         <div class="row" style="margin-top:8px"><select id="sStatus" class="inl"><option value="ontrack" ${k.status === "ontrack" ? "selected" : ""}>On Track</option><option value="perhatian" ${k.status === "perhatian" ? "selected" : ""}>Perlu Perhatian</option><option value="blocked" ${k.status === "blocked" ? "selected" : ""}>Blocked</option></select>

@@ -114,4 +114,12 @@ pre.weekly{white-space:pre-wrap;background:#fff;border:1px solid var(--line);bor
 .rcard{background:var(--cream2);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
 .rcard b{display:block}
 .rcard .meta{font-size:12px;color:var(--muted);margin-top:3px}
-@media(max-width:700px){.tbl.cards thead{display:none}.tbl.cards tr{display:block;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#fff}.tbl.cards td{display:block;border:0;padding:4px 10px}.tbl.cards td:before{content:attr(data-l);font-size:11px;color:var(--muted);display:block}.tbl.cards td[data-l=""]:before{display:none}.brand h1{font-size:22px}}
+body.lock{overflow:hidden}
+@media(max-width:700px){
+.tbl.cards thead{display:none}.tbl.cards tr{display:block;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#fff;padding:6px 0}
+.tbl.cards td{display:block;border:0;padding:3px 10px}.tbl.cards td:empty{display:none}
+.tbl.cards td:before{content:attr(data-l);font-size:11px;color:var(--muted);display:inline-block;min-width:92px;margin-right:6px}
+.tbl.cards td[data-l=""]:before{display:none}.tbl.cards td[data-l=""]{padding-bottom:6px}
+.brand h1{font-size:22px}.brand .tag{display:none}.brand .logo{font-size:10px}header{position:static}
+.fase{padding:8px 10px}.fase .note{display:none}.fase .c{margin-bottom:2px}
+}
