@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#B42F27">
+<title>CRK Expansion Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23B42F27'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='800' text-anchor='middle' fill='%23ECE4D4' font-family='Arial'%3ECRK%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand">
+    <div>
+      <div class="logo">CRK Group · PT Citarasa Kuliner Indonesia</div>
+      <h1><b>Expansion</b> Tracker</h1>
+      <div class="tag" id="tagline">Satu sumber data untuk progres pembukaan kios.</div>
+    </div>
+    <div class="hright">
+      <div class="sync" id="sync"><i></i><span>Memuat…</span></div>
+      <div class="who" id="who"></div>
+    </div>
+  </div>
+  <div class="modes" id="modes">
+    <button data-m="int" class="on">Tim Ekspansi</button>
+    <button data-m="div">All Divisi · Reporting</button>
+  </div>
+</div></header>
+
+<div class="wrap">
+  <div id="vLogin" class="hide"></div>
+  <div id="vInt" class="hide"></div>
+  <div id="vDiv" class="hide"></div>
+</div>
+
+<div class="ov" id="ov"></div>
+<div class="dr" id="dr"></div>
+<div class="toast" id="toast"></div>
+<button class="fab hide" id="fab">+ Kios</button>
+<script src="/static/app.js"></script>
+</body>
+</html>
