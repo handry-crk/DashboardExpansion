@@ -117,6 +117,10 @@ async def get_settings() -> Dict:
         if k not in s:
             s[k] = v
             changed = True
+    if (s.get("slaVersion") or 1) < C.SLA_VERSION:
+        s["stageSla"] = dict(C.DEFAULT_SLA)
+        s["slaVersion"] = C.SLA_VERSION
+        changed = True
     if changed:
         await db.put("settings", s)
     return s
@@ -147,7 +151,7 @@ async def ctx_from_header(authorization: Optional[str] = Header(None)) -> Ctx:
     m = await db.get("members", t["id"])
     if not m or not m.get("active", True):
         return Ctx()
-    return Ctx(member=m, is_admin=bool(m.get("isAdmin")) or m.get("role") == "Admin", role=m.get("role", ""))
+    return Ctx(member=m, is_admin=bool(m.get("isAdmin")) or m.get("role") in C.FULL_ACCESS_ROLES, role=m.get("role", ""))
 
 
 async def require_login(ctx: Ctx = Depends(ctx_from_header)) -> Ctx:
@@ -165,7 +169,7 @@ async def require_admin(ctx: Ctx = Depends(ctx_from_header)) -> Ctx:
 
 
 def can_edit(ctx: Ctx) -> bool:
-    return ctx.is_admin or ctx.role in ("SPV", "Surveyor", "SDO", "Legal", "Finance")
+    return ctx.is_admin or ctx.role in ("Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance")
 
 
 class RegisterIn(BaseModel):
@@ -208,7 +212,9 @@ class AdminLoginIn(BaseModel):
 
 
 def member_public(m: Dict) -> Dict:
-    return {k: v for k, v in m.items() if k not in ("pinHash",)}
+    d = {k: v for k, v in m.items() if k not in ("pinHash",)}
+    d["hasPin"] = bool(m.get("pinHash"))
+    return d
 
 
 @app.post("/api/auth/register")
@@ -217,7 +223,7 @@ async def register(body: RegisterIn):
     if any(m["name"].strip().lower() == body.name.strip().lower() for m in members):
         err(400, "Nama sudah terdaftar. Login dengan PIN, atau minta Admin reset PIN.")
     m = {"id": nid(), "name": body.name.strip(), "role": body.role, "email": body.email.strip(), "phone": body.phone,
-         "pinHash": hash_pin(body.pin), "active": True, "isAdmin": len(members) == 0 or body.role == "Admin",
+         "pinHash": hash_pin(body.pin), "active": True, "isAdmin": len(members) == 0 or body.role in C.FULL_ACCESS_ROLES,
          "createdAt": iso()}
     await db.put("members", m)
     return {"token": make_token(m["id"]), "member": member_public(m)}
@@ -231,6 +237,11 @@ async def login(body: LoginIn):
     lk = LOCK.get(m["id"], {"fails": 0, "until": 0})
     if lk["until"] > time.time():
         err(423, f"Terkunci. Coba lagi dalam {int((lk['until'] - time.time()) / 60) + 1} menit atau minta Admin reset PIN.")
+    if not m.get("pinHash"):
+        if not (body.pin.isdigit() and 4 <= len(body.pin) <= 6):
+            err(400, "PIN belum dibuat. Ketik PIN baru 4–6 digit angka; PIN itu akan menjadi PIN Anda.")
+        await db.update("members", m["id"], {"pinHash": hash_pin(body.pin), "pinSetAt": iso()})
+        return {"token": make_token(m["id"]), "member": member_public(await db.get("members", m["id"])), "pinCreated": True}
     if not check_pin(body.pin, m["pinHash"]):
         lk["fails"] += 1
         if lk["fails"] >= 5:
@@ -255,7 +266,7 @@ async def admin_login(body: AdminLoginIn):
 @app.get("/api/auth/members")
 async def list_members_for_login():
     ms = await db.find("members", {"active": True}, sort=[("name", 1)])
-    return [{"id": m["id"], "name": m["name"], "role": m["role"]} for m in ms]
+    return [{"id": m["id"], "name": m["name"], "role": m["role"], "hasPin": bool(m.get("pinHash"))} for m in ms]
 
 
 # ---------------------------------------------------------------- wilayah
@@ -359,7 +370,7 @@ class KiosIn(BaseModel):
 
 
 def stage_pic_ok(ctx: Ctx, stage: int) -> bool:
-    if ctx.is_admin or ctx.role == "SPV":
+    if ctx.is_admin or ctx.role in ("Manager", "SPV"):
         return True
     return ctx.role in C.STAGES[stage]["roles"]
 
@@ -739,7 +750,8 @@ async def report(t: str = Query(""), ctx: Ctx = Depends(ctx_from_header)):
     sm = summary(st["kios"])
     approved = [report_kios(k) for k in st["kios"] if k["status"] != "alternatif" and k["stage"] >= 2]
     return {"appName": s["appName"], "summary": sm, "headline": headline(sm), "kios": approved,
-            "stages": [{"i": x["i"], "n": x["n"], "pic": x["pic"], "fase": x["fase"]} for x in C.STAGES if not x.get("internal")],
+            "stages": [{"i": x["i"], "n": x["n"], "pic": x["pic"], "fase": x["fase"], "sla": (s.get("stageSla") or {}).get(str(x["i"]))} for x in C.STAGES if not x.get("internal")],
+            "slaGroups": [{"nama": g[0], "stages": g[1], "hari": g[2]} for g in C.SLA_GROUPS],
             "weeklyText": s.get("lastWeeklyText") or weekly_text(st["kios"], sm), "weeklyAt": s.get("lastWeeklyAt", ""),
             "today": today(), "month": this_month(), "serverTime": iso()}
 
@@ -912,6 +924,25 @@ async def import_csv(file: UploadFile = File(...), ctx: Ctx = Depends(require_ad
     return {"wilayahBaru": n_w, "kiosBaru": n_k, "barisDibaca": len(rows)}
 
 
+async def ensure_team() -> int:
+    """Tambahkan anggota tim ekspansi dari config.TEAM yang belum ada (cocokkan email/nama)."""
+    members = await db.find("members")
+    have = {(m.get("email") or "").lower() for m in members} | {m["name"].lower() for m in members}
+    n = 0
+    for name, email, role in C.TEAM:
+        if email.lower() in have or name.lower() in have:
+            continue
+        await db.put("members", {"id": nid(), "name": name, "role": role, "email": email, "phone": "", "pinHash": "",
+                                 "active": True, "isAdmin": role in C.FULL_ACCESS_ROLES, "createdAt": iso(), "preset": True})
+        n += 1
+    return n
+
+
+@app.post("/api/team/preset")
+async def team_preset(ctx: Ctx = Depends(require_admin)):
+    return {"ditambahkan": await ensure_team()}
+
+
 @app.post("/api/seed")
 async def seed(ctx: Ctx = Depends(require_admin)):
     if await db.count("kios"):
@@ -937,7 +968,7 @@ async def job_digest(force=False):
     html += "<h3>Blocked</h3>" + mailer.ul([f"{k['nama']} — {k['stageName']}: {k['lastNote']}" for k in blocked])
     html += "<h3>Lewat SLA / tidak ada update</h3>" + mailer.ul([f"{k['nama']} — {k['stageName']} ({k['daysInStage']} hari, PIC {k['stagePic']})" for k in late])
     html += "<h3>Menunggu approval SPV</h3>" + mailer.ul([f"{k['nama']} ({k['wilayahNama']})" for k in wait])
-    rcpt = [m["email"] for m in st["members"] if m.get("email") and (m["role"] in ("SPV", "Admin") or m.get("isAdmin"))]
+    rcpt = [m["email"] for m in st["members"] if m.get("email") and (m["role"] in ("Manager", "SPV", "Admin") or m.get("isAdmin"))]
     if s.get("adminEmail"):
         rcpt.append(s["adminEmail"])
     sent = await mailer.send_many(rcpt, "Daily Digest Ekspansi CRK", html)
@@ -956,7 +987,7 @@ async def job_nudge(force=False):
     for m in st["members"]:
         if not m.get("email") or not m.get("active", True):
             continue
-        mine = [k for k in late if m["role"] in C.STAGES[k["stage"]]["roles"] or (m["role"] == "SPV")]
+        mine = [k for k in late if m["role"] in C.STAGES[k["stage"]]["roles"] or m["role"] in ("SPV", "Manager")]
         if not mine:
             continue
         html = f"<p>Halo {m['name']}, {len(mine)} kios menunggu Anda:</p>" + mailer.ul([f"{k['nama']} — {k['stageName']} ({k['daysInStage']} hari di tahap ini)" for k in mine]) + f"<p><a href='{C.PUBLIC_BASE_URL}'>Buka Expansion Tracker</a></p>"
@@ -1073,6 +1104,9 @@ async def startup():
             log.warning("Index Mongo gagal dibuat: %s", e)
     try:
         await asyncio.wait_for(get_settings(), timeout=15)
+        n = await ensure_team()
+        if n:
+            log.info("Tim ekspansi dari dokumen Flow Ekspansi ditambahkan: %d anggota (PIN dibuat saat login pertama)", n)
     except Exception as e:
         log.error("Database belum bisa dijangkau saat startup (%s). App tetap berjalan; cek MONGO_URL. /api/health akan melaporkan status DB.", e)
     if os.getenv("DISABLE_SCHEDULER", "") != "1":

@@ -199,3 +199,24 @@ async def test_health_and_pages(cl):
     assert (await cl.get("/")).status_code == 200
     assert (await cl.get("/laporan")).status_code == 200
     assert (await cl.get("/static/app.js")).status_code == 200
+
+
+async def test_preset_team_and_first_login_pin(cl):
+    r = await cl.post("/api/team/preset", headers=H("dimas"))
+    assert r.status_code == 200 and r.json()["ditambahkan"] == 10
+    members = (await cl.get("/api/auth/members")).json()
+    bram = next(m for m in members if m["name"] == "Bram")
+    assert bram["hasPin"] is False and bram["role"] == "Manager"
+    r = await cl.post("/api/auth/login", json={"memberId": bram["id"], "pin": "12"})
+    assert r.status_code == 400
+    r = await cl.post("/api/auth/login", json={"memberId": bram["id"], "pin": "246810"})
+    assert r.status_code == 200 and r.json()["pinCreated"] is True
+    tok = r.json()["token"]
+    r = await cl.post("/api/auth/login", json={"memberId": bram["id"], "pin": "000000"})
+    assert r.status_code == 401
+    # Manager = akses penuh: bisa ubah settings dan lihat shareToken
+    st = (await cl.get("/api/state", headers={"Authorization": "Bearer " + tok})).json()
+    assert st["me"]["isAdmin"] is True and "shareToken" in st["settings"]
+    assert st["settings"]["slaVersion"] == 2  # stageSla sudah diubah test sebelumnya
+    r = await cl.post("/api/team/preset", headers=H("dimas"))
+    assert r.json()["ditambahkan"] == 0

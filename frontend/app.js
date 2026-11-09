@@ -80,7 +80,7 @@
   function render() {
     const wasLogin = !$("vLogin").classList.contains("hide");
     $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("fab").classList.add("hide");
-    $("who").innerHTML = me ? `${esc(me.name)} · ${esc(me.role)} <button id="btnOut">Keluar</button>` : "";
+    $("who").innerHTML = me ? `${esc(me.name)} · ${esc((S && S.roleLabel && S.roleLabel[me.role]) || me.role)} <button id="btnOut">Keluar</button>` : "";
     if (me) $("btnOut").onclick = () => logout();
     if (reportOnly) { $("vDiv").classList.remove("hide"); renderReport(); return; }
     if (mode === "div") {
@@ -92,7 +92,7 @@
     $("vInt").classList.remove("hide"); renderInternal();
     if (canEdit() && window.innerWidth < 700) $("fab").classList.remove("hide");
   }
-  const canEdit = () => me && (me.isAdmin || ["SPV", "Surveyor", "SDO", "Legal", "Finance"].includes(me.role));
+  const canEdit = () => me && (me.isAdmin || ["Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance"].includes(me.role));
 
   // ------------------------------------------------------------ login
   let loginTab = "masuk";
@@ -100,8 +100,8 @@
     const v = $("vLogin");
     let members = [];
     try { members = await api("/api/auth/members"); } catch (e) { }
-    const roles = ["SPV", "Surveyor", "SDO", "Legal", "Finance", "Admin"];
-    const roleLabel = { SPV: "SPV Ekspansi", Surveyor: "Surveyor", SDO: "Store Development Officer", Legal: "Legal", Finance: "Finance", Admin: "Head / Admin" };
+    const roles = ["Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance"];
+    const roleLabel = { Manager: "Expansion Manager", SPV: "SPV Ekspansi", Surveyor: "Surveyor", SDO: "Store Development Officer", Legal: "Legal", Finance: "Finance" };
     v.innerHTML = `<div class="login">
       <h2><b>Masuk</b> Tracker</h2>${msg ? `<div class="note" style="margin-bottom:10px">${esc(msg)}</div>` : ""}
       <div class="tabs"><button data-t="masuk" class="${loginTab === "masuk" ? "on" : ""}">Masuk</button><button data-t="daftar" class="${loginTab === "daftar" ? "on" : ""}">Daftar</button><button data-t="admin" class="${loginTab === "admin" ? "on" : ""}">PIN Admin</button></div>
@@ -109,10 +109,14 @@
     v.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => { loginTab = b.dataset.t; renderLogin(msg); }));
     const b = $("loginBody");
     if (loginTab === "masuk") {
-      b.innerHTML = members.length ? `<div class="f"><div class="full"><label>Nama</label><select id="lMember">${members.map((m) => `<option value="${m.id}">${esc(m.name)} — ${esc(m.role)}</option>`).join("")}</select></div>
-        <div class="full"><label>PIN</label><input id="lPin" type="password" inputmode="numeric" maxlength="6" placeholder="4–6 digit"></div></div>
+      b.innerHTML = members.length ? `<div class="f"><div class="full"><label>Nama</label><select id="lMember">${members.map((m) => `<option value="${m.id}" data-haspin="${m.hasPin ? 1 : 0}">${esc(m.name)} — ${esc(roleLabel[m.role] || m.role)}${m.hasPin ? "" : " · PIN belum dibuat"}</option>`).join("")}</select></div>
+        <div class="full"><label>PIN</label><input id="lPin" type="password" inputmode="numeric" maxlength="6" placeholder="4–6 digit"><div class="note" id="lPinNote" style="margin-top:4px"></div></div></div>
         <div class="row" style="margin-top:12px"><button class="btn" id="lGo">Masuk</button></div>` : `<div class="empty">Belum ada anggota. Daftar dulu — pendaftar pertama otomatis menjadi Admin.</div>`;
-      if (members.length) { $("lGo").onclick = doLogin; $("lPin").addEventListener("keydown", (e) => e.key === "Enter" && doLogin()); }
+      if (members.length) {
+        $("lGo").onclick = doLogin; $("lPin").addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
+        const upd = () => { const o = $("lMember").selectedOptions[0]; $("lPinNote").textContent = o && o.dataset.haspin === "0" ? "Login pertama: PIN 4–6 digit yang Anda ketik sekarang akan menjadi PIN Anda." : ""; };
+        $("lMember").onchange = upd; upd();
+      }
     } else if (loginTab === "daftar") {
       b.innerHTML = `<div class="f"><div class="full"><label>Nama</label><input id="rName"></div>
         <div><label>Role</label><select id="rRole">${roles.map((r) => `<option value="${r}">${roleLabel[r]}</option>`).join("")}</select></div>
@@ -129,7 +133,7 @@
     }
   }
   async function doLogin() { try { onLogin(await api("/api/auth/login", { method: "POST", body: { memberId: $("lMember").value, pin: $("lPin").value } })); } catch (e) { toast(e.message, true); } }
-  function onLogin(d) { token = d.token; localStorage.setItem("crk_token", token); me = d.member; refresh(); }
+  function onLogin(d) { token = d.token; localStorage.setItem("crk_token", token); me = d.member; if (d.pinCreated) toast("PIN Anda tersimpan. Gunakan PIN ini untuk login berikutnya."); refresh(); }
 
   // ------------------------------------------------------------ helpers on state
   const stageOf = (i) => S.stages[i];
@@ -146,6 +150,7 @@
     const mine = act.filter((k) => k.stage < 14 && (stageOf(k.stage).roles.includes(me.role) || (me.role === "SPV" && k.stage === 1))).sort((a, b) => b.daysInStage - a.daysInStage);
     const wilNames = S.wilayah.map((w) => w.nama);
     const picRoles = ["SPV", "Surveyor", "SDO", "Legal", "Finance"];
+    const roleLabel = S.roleLabel || {};
     v.innerHTML = `
     <section><h2><b>Ringkasan</b> Pipeline</h2><div class="sub">Angka otomatis dari data wilayah & kios</div>
       <div class="grid kpis">
@@ -212,8 +217,8 @@
     const d = k || { stage: 0, status: "ontrack", targetBuka: "", wilayahId: filters.wil ? (S.wilayah.find((w) => w.nama === filters.wil) || {}).id : "" };
     const st = stageOf(d.stage);
     const ro = !canEdit();
-    const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && (me.isAdmin || me.role === "SPV" || st.roles.includes(me.role));
-    const mayBack = k && k.stage > 0 && (me.isAdmin || me.role === "SPV");
+    const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
+    const mayBack = k && k.stage > 0 && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     showDr(`<div class="row"><h3>${k ? esc(k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
       <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
@@ -274,7 +279,7 @@
     const w = id ? S.wilayah.find((x) => x.id === id) : null;
     const d = w || { status: "dibagi", cluster: "Jabodetabek", targetKios: 1 };
     const ro = !canEdit();
-    const people = (role) => S.members.filter((m) => m.role === role || m.isAdmin).map((m) => `<option value="${m.id}" ${m.id === (role === "SPV" ? d.spvId : d.surveyorId) ? "selected" : ""}>${esc(m.name)}</option>`).join("");
+    const people = (role) => S.members.filter((m) => m.role === role || m.role === "Manager").map((m) => `<option value="${m.id}" ${m.id === (role === "SPV" ? d.spvId : d.surveyorId) ? "selected" : ""}>${esc(m.name)}</option>`).join("");
     showDr(`<div class="row"><h3>${w ? esc(w.nama) : "Wilayah baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
       <div class="f" style="margin-top:12px">
         <div><label>Nama wilayah</label><input id="wNama" value="${esc(d.nama || "")}" ${ro ? "disabled" : ""}></div>
@@ -320,7 +325,7 @@
         <button class="btn o s" data-job="digest">Kirim daily digest</button><button class="btn o s" data-job="nudge">Kirim nudge PIC</button><button class="btn o s" data-job="weekly">Kirim Weekly Update</button><button class="btn o s" data-job="backup">Backup sekarang</button>
         <a class="btn g s" href="#" id="bExport">Ekspor CSV</a><label class="btn g s" style="cursor:pointer">Impor CSV<input type="file" id="fImport" accept=".csv" class="hide"></label>${S.kios.length ? "" : `<button class="btn g s" id="bSeed">Isi data contoh</button>`}</div>
         <div class="note" style="margin-top:6px">Kolom impor: nama; wilayah; kota; cluster; alamat; tahap; status; targetBuka; sewaTahun; dp; vendor; catatan; tanggalUpdate. Email terkirim hanya bila SMTP/Resend diisi di environment.</div><div id="jobOut" class="note"></div></div>
-      <div class="card"><b>Anggota</b><div style="margin-top:8px" id="members"></div></div>`;
+      <div class="card"><div class="row"><b>Anggota</b><div class="sp"></div><button class="btn g s" id="bTeam">Tambah tim dari dokumen Flow</button></div><div style="margin-top:8px" id="members"></div></div>`;
     $("bCopyLink").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Link disalin")).catch(() => toast("Salin manual dari kolom", true));
     $("bRegen").onclick = () => confirmTwice("Token lama akan mati. Tekan lagi untuk konfirmasi.", () => saveSettings({ regenerateShareToken: true }));
     $("bSaveSet").onclick = () => { const sla = {}; document.querySelectorAll(".sla").forEach((i) => { if (i.value) sla[i.dataset.i] = +i.value; }); saveSettings({ appName: $("sApp").value, adminEmail: $("sEmail").value, dailyDigestTime: $("sDigest").value, nudgeTime: $("sNudge").value, weeklyUpdateDay: +$("sWDay").value, weeklyUpdateTime: $("sWTime").value, stalledDays: +$("sStalled").value, stageSla: sla, adminPin: $("sPin").value || undefined }); };
@@ -328,7 +333,8 @@
     $("bExport").onclick = async (e) => { e.preventDefault(); try { const r = await fetch("/api/export.csv", { headers: { Authorization: "Bearer " + token } }); const b = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "expansion-tracker.csv"; a.click(); } catch (e2) { toast("Gagal ekspor", true); } };
     $("fImport").onchange = async () => { const fd = new FormData(); fd.append("file", $("fImport").files[0]); try { const r = await api("/api/import", { method: "POST", body: fd }); toast(`Impor: ${r.kiosBaru} kios, ${r.wilayahBaru} wilayah baru`); refresh(true); } catch (e) { toast(e.message, true); } };
     if ($("bSeed")) $("bSeed").onclick = async () => { try { await api("/api/seed", { method: "POST" }); toast("Data contoh terisi"); refresh(true); } catch (e) { toast(e.message, true); } };
-    $("members").innerHTML = S.members.map((m) => `<div class="mcard"><div class="row"><div><b>${esc(m.name)} ${m.isAdmin ? '<span class="pill">Admin</span>' : ""}${m.active ? "" : ' <span class="pill m">nonaktif</span>'}</b><span class="note">${esc(m.email || "–")} · ${esc(m.phone || "–")}</span></div><div class="sp"></div>
+    $("bTeam").onclick = async () => { try { const r = await api("/api/team/preset", { method: "POST" }); toast(`${r.ditambahkan} anggota ditambahkan`); refresh(true); } catch (e) { toast(e.message, true); } };
+    $("members").innerHTML = S.members.map((m) => `<div class="mcard"><div class="row"><div><b>${esc(m.name)} ${m.isAdmin ? '<span class="pill">Admin</span>' : ""}${m.active ? "" : ' <span class="pill m">nonaktif</span>'}${m.hasPin === false ? ' <span class="pill m">PIN belum dibuat</span>' : ""}</b><span class="note">${esc(m.email || "–")} · ${esc(m.phone || "–")}</span></div><div class="sp"></div>
       <select class="inl mRole" data-id="${m.id}">${S.roles.map((r) => `<option ${r === m.role ? "selected" : ""}>${r}</option>`).join("")}</select>
       <button class="btn g s mAct" data-id="${m.id}" data-v="${m.active ? 0 : 1}">${m.active ? "Nonaktifkan" : "Aktifkan"}</button>
       <button class="btn g s mAdm" data-id="${m.id}" data-v="${m.isAdmin ? 0 : 1}">${m.isAdmin ? "Cabut admin" : "Jadikan admin"}</button>
@@ -361,7 +367,9 @@
       <section><h2><b>Kios</b> Beroperasi</h2><div class="sub">Hasil ekspansi yang sudah serah terima operasional</div>
         ${open.length ? open.map((k) => `<div class="rcard"><b>${esc(k.nama)} <span class="note">${esc(k.kode)}</span></b><div class="meta">${esc(k.wilayahNama)} · beroperasi sejak ${fmtD(k.openedAt)}</div></div>`).join("") : '<div class="empty">Belum ada kios yang beroperasi dari pipeline ini.</div>'}</section>
       <section><h2><b>Flow</b> & PIC Ekspansi</h2><div class="sub">Tahapan setiap kios setelah approval, beserta PIC yang bertanggung jawab</div>
-        <div class="flow">${R.stages.filter((s) => s.i < 14).map((s) => `<div class="fb"><span class="no">${s.i - 1}</span>${esc(s.n)}<small>PIC: ${esc(s.pic)}</small></div>`).join("")}</div></section>
+        <div class="flow">${R.stages.filter((s) => s.i < 14).map((s) => `<div class="fb"><span class="no">${s.i - 1}</span>${esc(s.n)}<small>PIC: ${esc(s.pic)}${s.sla ? ` · SLA ${s.sla} hari` : ""}</small></div>`).join("")}</div>
+        ${R.slaGroups ? `<div class="card" style="margin-top:12px"><b>SLA antar flow</b><div class="note" style="margin-bottom:6px">Batas waktu yang disepakati Tim Ekspansi per kelompok tahap; total ${R.slaGroups.reduce((a, g) => a + g.hari, 0)} hari kerja dari pengajuan DP sampai opening.</div>
+        <table class="tbl"><thead><tr><th>Kelompok tahap</th><th>Tahap</th><th class="r">SLA (hari)</th></tr></thead><tbody>${R.slaGroups.map((g) => `<tr><td><b>${esc(g.nama)}</b></td><td class="note">${g.stages.map((i) => i - 1).join(", ")}</td><td class="r"><b>${g.hari}</b></td></tr>`).join("")}</tbody></table></div>` : ""}</section>
       <section><div class="row"><div><h2><b>Weekly</b> Update</h2><div class="sub">${R.weeklyAt ? "Terakhir dikirim " + fmtDT(R.weeklyAt) : "Teks siap kirim ke grup koordinasi"}</div></div><div class="sp"></div><button class="btn o s" id="bCopyW">Copy teks</button></div>
         <pre class="weekly" id="weekly">${esc(R.weeklyText)}</pre></section>`;
     $("bCopyW").onclick = () => navigator.clipboard?.writeText(R.weeklyText).then(() => toast("Teks disalin")).catch(() => toast("Pilih teks lalu salin manual", true));

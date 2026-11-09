@@ -19,9 +19,24 @@ SMTP = {
 }
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 
-ROLES = ["SPV", "Surveyor", "SDO", "Legal", "Finance", "Admin"]
-ROLE_LABEL = {"SPV": "SPV Ekspansi", "Surveyor": "Surveyor", "SDO": "Store Development Officer",
-              "Legal": "Legal", "Finance": "Finance", "Admin": "Head / Admin"}
+ROLES = ["Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance", "Admin"]
+ROLE_LABEL = {"Manager": "Expansion Manager (akses penuh)", "SPV": "SPV Ekspansi", "Surveyor": "Surveyor", "SDO": "Store Development Officer",
+              "Legal": "Legal", "Finance": "Finance", "Admin": "Admin (IT / PIN)"}
+FULL_ACCESS_ROLES = ("Manager", "Admin")
+
+# Tim ekspansi awal (dokumen Flow Ekspansi 2-1). Dibuat otomatis saat database kosong; PIN dibuat saat login pertama.
+TEAM = [
+    ("Bram", "bram@citarasakuliner.com", "Manager"),
+    ("Andika", "andika@citarasakuliner.com", "SPV"),
+    ("Pradittya", "pradittya@citarasakuliner.com", "SPV"),
+    ("Syam", "syamvora@citarasakuliner.com", "SDO"),
+    ("Brian", "brian@citarasakuliner.com", "Surveyor"),
+    ("Handi", "handi@citarasakuliner.com", "Surveyor"),
+    ("Tegar", "tegar@citarasakuliner.com", "Surveyor"),
+    ("Nurmansyah", "nurmansyah@citarasakuliner.com", "Surveyor"),
+    ("Pram", "pramadhyra@citarasakuliner.com", "Surveyor"),
+    ("Ryan", "ryan@citarasakuliner.com", "Surveyor"),
+]
 
 # index, nama, PIC (label), roles yang boleh memajukan dari tahap ini, fase, internal?
 STAGES = [
@@ -43,7 +58,14 @@ STAGES = [
 ]
 LAST_STAGE = len(STAGES) - 1
 FASES = ["Pencarian", "Kontrak", "Renovasi", "Serah Terima", "Beroperasi"]
-DEFAULT_SLA = {"2": 3, "3": 7, "4": 5, "5": 5, "6": 5, "7": 7, "8": 5, "9": 3, "10": 5, "11": 21, "12": 3, "13": 3}
+DEFAULT_SLA = {"2": 1, "3": 3, "4": 1, "5": 1, "6": 1, "7": 2, "8": 1, "9": 1, "10": 1, "11": 10, "12": 2, "13": 2}
+SLA_VERSION = 2
+# SLA gabungan antar flow untuk ditampilkan di Reporting (nama, tahap tercakup, hari)
+SLA_GROUPS = [
+    ("Pengajuan Pembayaran DP", [2], 1), ("Legalitas + SPK", [3, 4, 5], 5), ("Pelunasan Sewa", [6], 1),
+    ("Layouting + RAB", [7, 8], 3), ("Pengajuan Pembayaran Renovasi", [9], 1), ("Mobilisasi Vendor", [10], 1),
+    ("Renovasi sampai Opening", [11, 12, 13], 14),
+]
 CLUSTERS = {"Jabodetabek": "JBD", "Bandung Raya": "BDG", "Jawa Timur": "JTM", "Lainnya": "LN"}
 STATUSES = ["ontrack", "perhatian", "blocked", "alternatif"]
 STATUS_LABEL = {"ontrack": "On Track", "perhatian": "Perlu Perhatian", "blocked": "Blocked", "alternatif": "Alternatif / Ditolak", "selesai": "Beroperasi"}
@@ -53,5 +75,5 @@ WIL_STATUS_LABEL = {"dibagi": "Dibagi", "visit": "Sudah visit", "cari": "Pencari
 DEFAULT_SETTINGS = {
     "appName": "CRK Expansion Tracker", "weeklyUpdateDay": 1, "weeklyUpdateTime": "08:30",
     "dailyDigestTime": "17:00", "nudgeTime": "09:00", "workDays": [1, 2, 3, 4, 5],
-    "adminEmail": "", "stalledDays": 7, "stageSla": DEFAULT_SLA, "lastWeeklyText": "", "lastWeeklyAt": "",
+    "adminEmail": "", "stalledDays": 7, "stageSla": DEFAULT_SLA, "slaVersion": SLA_VERSION, "lastWeeklyText": "", "lastWeeklyAt": "",
 }
