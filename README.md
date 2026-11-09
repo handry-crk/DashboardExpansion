@@ -40,7 +40,7 @@ Tanpa `MONGO_URL`, data disimpan di `data/mock.json` (cukup untuk uji, bukan pro
 | 11 Mobilisasi · 12 Renovasi · 13 Serah Terima (Renovasi) | SDO |
 | 14 Serah Terima (Operasional) | SPV, Surveyor |
 
-Kembali tahap: hanya SPV/Admin, catatan wajib. Lompat tahap: hanya Admin, catatan wajib. Status Perlu Perhatian/Blocked: catatan wajib.
+Kembali tahap: hanya Manager/SPV/Admin, catatan wajib. Lompat tahap: hanya Manager/Admin, catatan wajib. Status Perlu Perhatian/Blocked: catatan wajib; saat tahap maju, status otomatis kembali On Track. Gate: DP terisi sebelum Pengajuan DP; sewa terisi + file SPK terunggah sebelum Pelunasan Sewa; RAB terisi sebelum Pengajuan Pembayaran Vendor.
 
 ## Struktur
 ```

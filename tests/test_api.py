@@ -94,12 +94,16 @@ async def test_wilayah_kios_flow(cl):
     assert r.status_code == 403
     r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 4}, headers=H("lia"))
     assert r.status_code == 200
-    # 4→5 butuh SPK file
+    # 4→5 boleh tanpa file; 5→6 butuh SPK yang sudah ditandatangani
     r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 5}, headers=H("rani"))
+    assert r.status_code == 200
+    r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 6}, headers=H("dimas"))
     assert r.status_code == 400 and "SPK" in r.json()["detail"]
     r = await cl.post(f"/api/kios/{k['id']}/files?kind=spk", files={"file": ("spk.pdf", b"%PDF-1.4 test", "application/pdf")}, headers=H("rani"))
     assert r.status_code == 200
-    r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 5}, headers=H("rani"))
+    r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 6}, headers=H("dimas"))
+    assert r.status_code == 200
+    r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 5, "note": "kembali untuk uji"}, headers=H("dimas"))
     assert r.status_code == 200
     # lompat tahap oleh non-admin ditolak
     r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 8, "note": "x"}, headers=H("rani"))
@@ -220,3 +224,31 @@ async def test_preset_team_and_first_login_pin(cl):
     assert st["settings"]["slaVersion"] == 2  # stageSla sudah diubah test sebelumnya
     r = await cl.post("/api/team/preset", headers=H("dimas"))
     assert r.json()["ditambahkan"] == 0
+
+
+async def test_status_reset_on_advance_and_days_in_stage(cl):
+    kid = T["kid"]
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    k = next(x for x in st["kios"] if x["id"] == kid)
+    assert k["statusKey"] == "blocked" and k["stage"] == 4
+    # perubahan status tidak mereset hari di tahap: log masuk tahap tetap yang dipakai
+    r = await cl.post(f"/api/kios/{kid}/status", json={"status": "perhatian", "note": "cek ulang"}, headers=H("rani"))
+    assert r.status_code == 200
+    # maju tahap → status otomatis On Track
+    r = await cl.post(f"/api/kios/{kid}/stage", json={"to": 5}, headers=H("rani"))
+    assert r.status_code == 200 and r.json()["status"] == "ontrack"
+    tl = (await cl.get(f"/api/kios/{kid}/timeline", headers=H("rani"))).json()
+    assert tl[0]["toStage"] == 5 and tl[0]["toStatus"] == "ontrack" and tl[0]["fromStatus"] == "perhatian"
+
+
+async def test_wilayah_back_to_cari_when_kios_alternatif(cl):
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    w = next(x for x in st["wilayah"] if x["id"] == T["wid"])
+    assert w["status"] == "selesai"
+    r = await cl.post(f"/api/kios/{T['kid']}/alternatif", json={"note": "pemilik batal"}, headers=H("dimas"))
+    assert r.json()["status"] == "alternatif"
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    w = next(x for x in st["wilayah"] if x["id"] == T["wid"])
+    assert w["status"] == "cari"
+    r = await cl.post(f"/api/kios/{T['kid']}/alternatif", json={"note": "lanjut lagi"}, headers=H("dimas"))
+    assert r.json()["stage"] == 0

@@ -402,8 +402,11 @@ async def sync_wilayah_status(wilayah_id: str):
         return
     ks = await db.find("kios", {"wilayahId": wilayah_id})
     approved = [k for k in ks if k["stage"] >= 2 and k["status"] != "alternatif"]
-    if approved and len(approved) >= (w.get("targetKios") or 1) and w["status"] != "selesai":
+    target = w.get("targetKios") or 1
+    if len(approved) >= target and w["status"] != "selesai":
         await db.update("wilayah", wilayah_id, {"status": "selesai", "updatedAt": iso()})
+    elif len(approved) < target and w["status"] == "selesai":
+        await db.update("wilayah", wilayah_id, {"status": "cari", "updatedAt": iso()})
     elif approved and w["status"] in ("dibagi", "visit"):
         await db.update("wilayah", wilayah_id, {"status": "cari", "updatedAt": iso()})
 
@@ -444,12 +447,12 @@ class StageIn(BaseModel):
 def check_gates(k: Dict, to: int):
     if to >= 2 and not (k.get("dp") or 0) > 0:
         err(400, "Isi nilai DP sebelum mengajukan Down Payment")
-    if to >= 5 and not k.get("spkFile"):
-        err(400, "Unggah file SPK sebelum tahap Penandatanganan SPK")
+    if to >= 6 and not k.get("spkFile"):
+        err(400, "Unggah file SPK yang sudah ditandatangani sebelum melanjutkan ke Pelunasan Sewa")
     if to >= 6 and not (k.get("sewaTahun") or 0) > 0:
         err(400, "Isi nilai sewa per tahun sebelum Pelunasan Sewa")
-    if to >= 8 and not (k.get("rabNilai") or 0) > 0:
-        err(400, "Isi nilai RAB vendor sebelum Kesepakatan RAB")
+    if to >= 9 and not (k.get("rabNilai") or 0) > 0:
+        err(400, "Isi nilai RAB vendor yang disepakati sebelum Pengajuan Pembayaran Vendor")
 
 
 @app.post("/api/kios/{kid}/stage")
@@ -480,6 +483,8 @@ async def change_stage(kid: str, body: StageIn, ctx: Ctx = Depends(require_login
         if not note:
             err(400, "Catatan wajib diisi saat mengembalikan tahap")
     fields = {"stage": to, "updatedAt": iso(), "updatedBy": ctx.member["id"]}
+    if to > cur and k["status"] in ("blocked", "perhatian"):
+        fields["status"] = "ontrack"  # hambatan dianggap selesai saat tahap maju
     if to == C.LAST_STAGE:
         fields["openedAt"] = today()
         fields["status"] = "ontrack"
@@ -531,6 +536,7 @@ async def kios_alternatif(kid: str, body: NoteIn, ctx: Ctx = Depends(require_log
             err(400, "Catatan alasan wajib diisi")
         await db.update("kios", kid, {"status": "alternatif", "updatedAt": iso(), "updatedBy": ctx.member["id"]})
         await add_log(kid, ctx.member["id"], k["stage"], k["stage"], k["status"], "alternatif", body.note.strip())
+    await sync_wilayah_status(k["wilayahId"])
     return await db.get("kios", kid)
 
 
@@ -541,6 +547,12 @@ async def delete_kios(kid: str, ctx: Ctx = Depends(require_admin)):
         await db.delete("stagelog", r["id"])
     for r in await db.find("comments", {"kiosId": kid}):
         await db.delete("comments", r["id"])
+    for r in await db.find("files", {"kiosId": kid}):
+        try:
+            os.remove(r["path"])
+        except Exception:
+            pass
+        await db.delete("files", r["id"])
     return {"ok": True}
 
 
@@ -615,7 +627,7 @@ def enrich_kios(k: Dict, logs_by_kios: Dict[str, List[Dict]], settings: Dict, me
     logs = logs_by_kios.get(k["id"], [])
     entered = None
     for l in sorted(logs, key=lambda x: x["at"], reverse=True):
-        if l["toStage"] == k["stage"]:
+        if l["toStage"] == k["stage"] and l.get("fromStage") != l["toStage"]:
             entered = l["at"]
             break
     entered = entered or k.get("createdAt")
