@@ -267,3 +267,21 @@ async def test_settings_sla_validation(cl):
     # SLA baru langsung memengaruhi flag: kios di stage 5 selama 0 hari, SLA 0 = tidak ada flag
     st = (await cl.get("/api/state", headers=H("dimas"))).json()
     assert st["settings"]["stageSla"]["11"] == 12
+
+
+async def test_direksi_report(cl):
+    r = await cl.get("/api/direksi?t=salah")
+    assert r.status_code == 404
+    r = await cl.put("/api/settings", json={"monthlyTarget": {"2026-12": 2, "abc": 1, "2027-01": -3}}, headers=H("dimas"))
+    assert r.status_code == 200 and r.json()["monthlyTarget"] == {"2026-12": 2}
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    r = await cl.get("/api/direksi?t=" + st["settings"]["shareToken"])
+    assert r.status_code == 200
+    d = r.json()
+    assert len(d["monthly"]) == 9 and sum(1 for m in d["monthly"] if m["isCurrent"]) == 1
+    assert {f["fase"] for f in d["fases"]} == {"Kontrak", "Renovasi", "Serah Terima"}
+    assert len(d["stageSpeed"]) == 12 and len(d["highlights"]) >= 3
+    k = (d["attention"] + d["upcoming"] + [{}])[0]
+    for forbidden in ("sewaTahun", "dp", "pemilikHp"):
+        assert forbidden not in k
+    assert (await cl.get("/direksi")).status_code == 200

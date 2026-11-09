@@ -75,5 +75,5 @@ WIL_STATUS_LABEL = {"dibagi": "Dibagi", "visit": "Sudah visit", "cari": "Pencari
 DEFAULT_SETTINGS = {
     "appName": "CRK Expansion Tracker", "weeklyUpdateDay": 1, "weeklyUpdateTime": "08:30",
     "dailyDigestTime": "17:00", "nudgeTime": "09:00", "workDays": [1, 2, 3, 4, 5],
-    "adminEmail": "", "stalledDays": 7, "stageSla": DEFAULT_SLA, "slaVersion": SLA_VERSION, "lastWeeklyText": "", "lastWeeklyAt": "",
+    "adminEmail": "", "stalledDays": 7, "stageSla": DEFAULT_SLA, "slaVersion": SLA_VERSION, "monthlyTarget": {}, "lastWeeklyText": "", "lastWeeklyAt": "",
 }

@@ -123,3 +123,15 @@ body.lock{overflow:hidden}
 .brand h1{font-size:22px}.brand .tag{display:none}.brand .logo{font-size:10px}header{position:static}
 .fase{padding:8px 10px}.fase .note{display:none}.fase .c{margin-bottom:2px}
 }
+
+.dirhead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:22px;padding-bottom:12px;border-bottom:2px solid var(--red)}
+.dirgrid{display:grid;gap:0 16px;grid-template-columns:repeat(auto-fit,minmax(440px,1fr))}
+@media(max-width:700px){.dirgrid{grid-template-columns:1fr}}
+@media print{
+  header,.modes,.noprint,.toast,.fab,#sync{display:none!important}
+  body{background:#fff;font-size:12px}.wrap{max-width:none;padding:0}
+  .card,.kpi,.fase{break-inside:avoid;border-color:#ccc}
+  section{margin-top:14px}.dirgrid{grid-template-columns:1fr 1fr}
+  h2{font-size:18px}.kpi .n{font-size:22px}
+  @page{size:A4;margin:14mm}
+}

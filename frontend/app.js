@@ -11,8 +11,9 @@
   const urlParams = new URLSearchParams(location.search);
   const shareT = urlParams.get("t") || "";
   const reportOnly = location.pathname.startsWith("/laporan");
+  const direksiOnly = location.pathname.startsWith("/direksi");
   let token = localStorage.getItem("crk_token") || "";
-  let me = null, S = null, R = null, mode = reportOnly ? "div" : "int";
+  let me = null, S = null, R = null, D = null, mode = direksiOnly ? "dir" : (reportOnly ? "div" : "int");
   let filters = { wil: "", st: "", pic: "", mine: false };
   let pollTimer = null;
 
@@ -38,26 +39,31 @@
     document.querySelectorAll("#modes button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.m)));
     $("ov").addEventListener("click", closeDr);
     $("fab").addEventListener("click", () => openKios());
-    if (reportOnly) { $("modes").classList.add("hide"); }
+    if (reportOnly || direksiOnly) { $("modes").classList.add("hide"); }
     await refresh();
     document.addEventListener("visibilitychange", () => { if (!document.hidden && (token || reportOnly || shareT)) refresh(true); });
-    pollTimer = setInterval(() => { if (!document.hidden && !$("dr").classList.contains("on") && (token || reportOnly || shareT)) refresh(true); }, 8000);
+    pollTimer = setInterval(() => { if (!document.hidden && !$("dr").classList.contains("on") && (token || reportOnly || direksiOnly || shareT)) refresh(true); }, mode === "dir" ? 30000 : 8000);
   }
 
   function setMode(m) {
     mode = m;
     document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.m === m));
-    try { if (!reportOnly) location.hash = m === "div" ? "reporting" : "internal"; } catch (e) { }
+    try { if (!reportOnly && !direksiOnly) location.hash = m === "div" ? "reporting" : m === "dir" ? "direksi" : "internal"; } catch (e) { }
     render();
   }
-  if (!reportOnly && location.hash === "#reporting") mode = "div";
+  if (!reportOnly && !direksiOnly && location.hash === "#reporting") mode = "div";
+  if (!reportOnly && !direksiOnly && location.hash === "#direksi") mode = "dir";
 
   let lastSig = "";
   const sigOf = (o) => { if (!o) return ""; const c = { ...o }; delete c.serverTime; delete c.today; return JSON.stringify(c); };
   const typing = () => { const a = document.activeElement; return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT") && a.type !== "checkbox"; };
   async function refresh(quiet) {
     try {
-      if (reportOnly || (!token && mode === "div" && shareT)) {
+      if (direksiOnly || (!token && mode === "dir" && shareT)) {
+        D = await api("/api/direksi?t=" + encodeURIComponent(shareT));
+        setSync("ok", "Data per " + fmtDT(D.asOf));
+        if (quiet) { const g = sigOf(D); if (g === lastSig) return; lastSig = g; } else lastSig = sigOf(D);
+      } else if (reportOnly || (!token && mode === "div" && shareT)) {
         R = await api("/api/report?t=" + encodeURIComponent(shareT));
         setSync("ok", "Live · " + fmtDT(R.serverTime));
         if (quiet) { const g = sigOf(R); if (g === lastSig) return; lastSig = g; }
@@ -66,12 +72,13 @@
         S = await api("/api/state");
         me = S.me;
         if (mode === "div") R = await api("/api/report");
+        if (mode === "dir") D = await api("/api/direksi");
         setSync("ok", "Live · " + fmtDT(S.serverTime));
         if (quiet) {
-          const g = sigOf(S) + sigOf(R);
+          const g = sigOf(S) + sigOf(R) + sigOf(D);
           if (g === lastSig || typing()) return; // tidak ada perubahan, atau user sedang mengetik
           lastSig = g;
-        } else lastSig = sigOf(S) + sigOf(R);
+        } else lastSig = sigOf(S) + sigOf(R) + sigOf(D);
       } else {
         setSync("", "Belum login");
         if (quiet) return;
@@ -89,9 +96,14 @@
   let loginShown = false;
   function render() {
     const wasLogin = !$("vLogin").classList.contains("hide");
-    $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("fab").classList.add("hide");
+    $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("vDir").classList.add("hide"); $("fab").classList.add("hide");
     $("who").innerHTML = me ? `${esc(me.name)} · ${esc((S && S.roleLabel && S.roleLabel[me.role]) || me.role)} <button id="btnOut">Logout</button>` : "";
     if (me) $("btnOut").onclick = () => logout();
+    if (direksiOnly) { $("vDir").classList.remove("hide"); renderDireksi(); return; }
+    if (mode === "dir") {
+      if (!token && !shareT) { $("vLogin").classList.remove("hide"); if (!wasLogin) renderLogin("Login untuk melihat Report Direksi, atau buka link dari Manager."); return; }
+      $("vDir").classList.remove("hide"); renderDireksi(); return;
+    }
     if (reportOnly) { $("vDiv").classList.remove("hide"); renderReport(); return; }
     if (mode === "div") {
       if (!token && !shareT) { $("vLogin").classList.remove("hide"); if (!wasLogin) renderLogin("Login untuk melihat Reporting, atau buka link laporan dari Admin."); return; }
@@ -321,9 +333,15 @@
   function renderPanel() {
     const s = S.settings;
     const link = location.origin + "/laporan?t=" + encodeURIComponent(s.shareToken || "");
+    const linkDir = location.origin + "/direksi?t=" + encodeURIComponent(s.shareToken || "");
     $("panel").innerHTML = `
       <div class="card" style="margin-bottom:10px"><b>Link laporan All Divisi</b><div class="note" style="margin:4px 0 8px">Bagikan ke grup divisi lain — read-only, tanpa login, tanpa data sewa/DP/pemilik.</div>
-        <div class="row"><input class="inl" style="flex:1;min-width:200px" value="${esc(link)}" readonly id="shareLink"><button class="btn o s" id="bCopyLink">Copy link</button><button class="btn g s" id="bRegen">Generate token baru</button></div></div>
+        <div class="row"><input class="inl" style="flex:1;min-width:200px" value="${esc(link)}" readonly id="shareLink"><button class="btn o s" id="bCopyLink">Copy link</button><button class="btn g s" id="bRegen">Generate token baru</button></div>
+        <div class="note" style="margin:10px 0 4px"><b>Link Report Direksi</b> — halaman visual untuk direksi (token sama, read-only, siap print/PDF).</div>
+        <div class="row"><input class="inl" style="flex:1;min-width:200px" value="${esc(linkDir)}" readonly id="dirLink"><button class="btn o s" id="bCopyDir">Copy link</button></div></div>
+      <div class="card" style="margin-bottom:10px"><b>Target pembukaan per bulan</b><div class="note" style="margin:4px 0 8px">Dipakai di Report Direksi (actual vs target). Kosong = tanpa target.</div>
+        <div class="row">${monthsAhead().map((m) => `<label style="display:flex;align-items:center;gap:6px;margin:0"><span class="note" style="width:70px">${fmtM(m)}</span><input class="inl mt" data-m="${m}" type="number" min="0" style="width:64px" value="${(s.monthlyTarget || {})[m] ?? ""}"></label>`).join("")}</div>
+        <div class="row" style="margin-top:8px"><button class="btn s" id="bSaveTgt">Simpan target</button></div></div>
       <div class="card" style="margin-bottom:10px"><b>Settings</b><div class="f" style="margin-top:8px">
         <div><label>Nama aplikasi</label><input id="sApp" value="${esc(s.appName)}"></div><div><label>Email admin (CC)</label><input id="sEmail" value="${esc(s.adminEmail || "")}"></div>
         <div><label>Daily digest (WIB)</label><input id="sDigest" value="${esc(s.dailyDigestTime)}" placeholder="17:00"></div><div><label>Nudge PIC (WIB)</label><input id="sNudge" value="${esc(s.nudgeTime)}" placeholder="09:00"></div>
@@ -337,6 +355,8 @@
         <div class="note" style="margin-top:6px">Kolom import: nama; wilayah; kota; cluster; alamat; tahap; status; targetBuka; sewaTahun; dp; vendor; catatan; tanggalUpdate. Email terkirim hanya bila SMTP/Resend diisi di environment.</div><div id="jobOut" class="note"></div></div>
       <div class="card"><div class="row"><b>Anggota</b><div class="sp"></div><button class="btn g s" id="bTeam">Tambah tim dari dokumen Flow</button></div><div style="margin-top:8px" id="members"></div></div>`;
     $("bCopyLink").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Link ter-copy")).catch(() => toast("Copy manual dari kolom", true));
+    $("bCopyDir").onclick = () => navigator.clipboard?.writeText(linkDir).then(() => toast("Link ter-copy")).catch(() => toast("Copy manual dari kolom", true));
+    $("bSaveTgt").onclick = () => { const t = { ...(s.monthlyTarget || {}) }; document.querySelectorAll(".mt").forEach((i) => { if (i.value === "") delete t[i.dataset.m]; else t[i.dataset.m] = +i.value; }); saveSettings({ monthlyTarget: t }); };
     $("bRegen").onclick = () => confirmTwice("Token lama akan mati. Tekan lagi untuk konfirmasi.", () => saveSettings({ regenerateShareToken: true }));
     $("bSaveSet").onclick = () => { const sla = {}; document.querySelectorAll(".sla").forEach((i) => { if (i.value) sla[i.dataset.i] = +i.value; }); saveSettings({ appName: $("sApp").value, adminEmail: $("sEmail").value, dailyDigestTime: $("sDigest").value, nudgeTime: $("sNudge").value, weeklyUpdateDay: +$("sWDay").value, weeklyUpdateTime: $("sWTime").value, stalledDays: +$("sStalled").value, stageSla: sla, adminPin: $("sPin").value || undefined }); };
     document.querySelectorAll("[data-job]").forEach((b) => (b.onclick = async () => { b.disabled = true; try { const r = await api(`/api/jobs/${b.dataset.job}/run`, { method: "POST" }); $("jobOut").textContent = JSON.stringify(r).slice(0, 400); toast("Job dijalankan"); } catch (e) { toast(e.message, true); } b.disabled = false; }));
@@ -383,6 +403,84 @@
       <section><div class="row"><div><h2><b>Weekly</b> Update</h2><div class="sub">${R.weeklyAt ? "Terakhir dikirim " + fmtDT(R.weeklyAt) : "Teks siap kirim ke grup koordinasi"}</div></div><div class="sp"></div><button class="btn o s" id="bCopyW">Copy teks</button></div>
         <pre class="weekly" id="weekly">${esc(R.weeklyText)}</pre></section>`;
     $("bCopyW").onclick = () => navigator.clipboard?.writeText(R.weeklyText).then(() => toast("Teks ter-copy")).catch(() => toast("Pilih teks lalu copy manual", true));
+  }
+
+  // ------------------------------------------------------------ report direksi (SVG charts, brand palette)
+  function monthsAhead() { const out = []; const d = new Date(); d.setDate(1); for (let i = 0; i < 6; i++) { out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); d.setMonth(d.getMonth() + 1); } return out; }
+  const RED = "#B42F27", TINT = "#E0BFB1", INK = "#212121", MUTED = "#6B625A", LINE = "#D9CDB8";
+  function svgBars(rows, opts) {
+    // rows: [{label, a, b, mark}] a = primary bar, b = secondary bar (optional), mark = line marker (optional)
+    const W = opts.w || 640, H = opts.h || 220, pl = 36, pr = 12, pt = 16, pb = opts.pb || 44;
+    const n = rows.length, mx = Math.max(1, ...rows.flatMap((r) => [r.a || 0, r.b || 0, r.mark || 0]));
+    const cw = (W - pl - pr) / n, bw = Math.min(28, cw * (opts.b ? 0.32 : 0.55));
+    const y = (v) => pt + (H - pt - pb) * (1 - v / mx);
+    let g = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:${H}px;font-family:inherit">`;
+    const ticks = mx <= 5 ? mx : 5;
+    for (let i = 0; i <= ticks; i++) { const v = Math.round((mx / ticks) * i * 10) / 10; g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="${LINE}" stroke-width="1"/><text x="${pl - 6}" y="${y(v) + 4}" font-size="10" fill="${MUTED}" text-anchor="end">${v}</text>`; }
+    rows.forEach((r, i) => {
+      const cx = pl + cw * i + cw / 2;
+      if (opts.b) {
+        g += `<rect x="${cx - bw - 2}" y="${y(r.a || 0)}" width="${bw}" height="${y(0) - y(r.a || 0)}" fill="${r.muted ? TINT : RED}" rx="3"/>`;
+        g += `<rect x="${cx + 2}" y="${y(r.b || 0)}" width="${bw}" height="${y(0) - y(r.b || 0)}" fill="${TINT}" rx="3"/>`;
+        if (r.a != null) g += `<text x="${cx - 2 - bw / 2}" y="${y(r.a || 0) - 4}" font-size="11" font-weight="700" fill="${INK}" text-anchor="middle">${r.a}</text>`;
+        if (r.b) g += `<text x="${cx + 2 + bw / 2}" y="${y(r.b) - 4}" font-size="10" fill="${MUTED}" text-anchor="middle">${r.b}</text>`;
+      } else {
+        g += `<rect x="${cx - bw / 2}" y="${y(r.a || 0)}" width="${bw}" height="${y(0) - y(r.a || 0)}" fill="${r.over ? RED : (r.muted ? TINT : RED)}" rx="3"/>`;
+        if (r.a != null) g += `<text x="${cx}" y="${y(r.a || 0) - 4}" font-size="11" font-weight="700" fill="${INK}" text-anchor="middle">${r.a}</text>`;
+      }
+      if (r.mark != null) g += `<line x1="${cx - cw * 0.42}" x2="${cx + cw * 0.42}" y1="${y(r.mark)}" y2="${y(r.mark)}" stroke="${INK}" stroke-width="2" stroke-dasharray="4 3"/>`;
+      const lab = String(r.label).split("\n");
+      lab.forEach((t, li) => { g += `<text x="${cx}" y="${H - pb + 14 + li * 12}" font-size="10" fill="${r.isCurrent ? RED : MUTED}" font-weight="${r.isCurrent ? 700 : 400}" text-anchor="middle">${esc(t)}</text>`; });
+    });
+    g += `</svg>`;
+    return g;
+  }
+  function legend(items) { return `<div class="row" style="gap:14px;font-size:11px;color:var(--muted);margin-top:4px">${items.map((i) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${i.c};vertical-align:-1px;margin-right:4px;${i.dash ? "background:none;border-top:2px dashed " + INK + ";height:0;vertical-align:3px" : ""}"></i>${i.l}</span>`).join("")}</div>`; }
+  function renderDireksi() {
+    const v = $("vDir");
+    if (!D) { v.innerHTML = `<div class="empty" style="margin-top:20px">${shareT || token ? "Loading report…" : "Link tidak valid."}</div>`; return; }
+    const sm = D.summary;
+    const curIdx = D.monthly.findIndex((m) => m.isCurrent);
+    const monthlyRows = D.monthly.map((m) => ({ label: m.label.replace(" ", "\n"), a: m.actual, b: m.actual == null ? m.planned : null, mark: m.target || null, isCurrent: m.isCurrent }));
+    const faseRows = D.fases.map((f) => ({ label: f.fase, a: f.count }));
+    const clRows = D.clusters.map((c) => ({ label: c.cluster.replace(" ", "\n"), a: c.beroperasi, b: c.proses }));
+    const speedRows = D.stageSpeed.map((s) => ({ label: `${s.stage - 1}\n${s.short}`, a: s.avg, mark: s.sla || null, over: s.avg != null && s.sla && s.avg > s.sla, muted: s.avg == null }));
+    const ytdOpen = D.monthly.filter((m) => m.actual != null && m.month.slice(0, 4) === D.month.slice(0, 4)).reduce((a, m) => a + (m.actual || 0), 0);
+    v.innerHTML = `
+      <div class="dirhead">
+        <div><div class="note" style="letter-spacing:.14em;text-transform:uppercase;font-weight:700">CRK Group · Expansion</div><h2 style="font-size:30px"><b>Report</b> Direksi — ${esc(D.monthLabel)}</h2><div class="note">Data per ${fmtDT(D.asOf)} · sumber: Expansion Tracker (input harian Tim Ekspansi)</div></div>
+        <div class="row noprint"><button class="btn o s" id="bPrint">Print / simpan PDF</button><button class="btn o s" id="bCopyHl">Copy ringkasan</button></div>
+      </div>
+      <section style="margin-top:14px"><div class="grid kpis">
+        ${kpi(sm.beroperasi, "Kios beroperasi", `${ytdOpen} dibuka tahun ${D.month.slice(0, 4)}`)}
+        ${kpi(sm.dalamProses, "Dalam proses", `${sm.kontrak} kontrak · ${sm.renovasi} renovasi · ${sm.serahTerima} serah terima`)}
+        ${kpi(`${sm.bukaBulanIni}<span style="font-size:16px;color:var(--muted)"> / ${(D.monthly[curIdx] || {}).target || "–"}</span>`, "Buka bulan ini vs target", `${sm.targetBulanIni} kios lagi ditargetkan ${esc(D.monthLabel)}`)}
+        ${kpi(D.leadTimeAvg != null ? `${D.leadTimeAvg}<span style="font-size:16px;color:var(--muted)"> hari</span>` : "–", "Rata-rata DP → buka", `SLA ${D.slaTotal} hari · ${D.leadTimeN} kios selesai`)}
+        ${kpi(D.slaCompliance != null ? D.slaCompliance + "%" : "–", "Perpindahan tahap dalam SLA", `${D.slaSamples} perpindahan tahap dinilai`)}
+        ${kpi(sm.blocked + sm.lewatSla, "Perlu keputusan", `${sm.blocked} blocked · ${sm.lewatSla} lewat SLA`)}
+      </div></section>
+      <section><h2><b>Highlights</b></h2><div class="sub">Ringkasan untuk direksi</div>
+        <div class="card">${D.highlights.map((h) => `<div class="callout" style="margin-top:8px;border-top:0;padding-top:0;font-weight:500">${esc(h)}</div>`).join("")}</div></section>
+      <div class="dirgrid">
+        <section><h2><b>Pembukaan</b> per Bulan</h2><div class="sub">Actual vs target; bulan mendatang menampilkan kios yang direncanakan buka</div>
+          <div class="card">${svgBars(monthlyRows, { b: true, h: 230 })}${legend([{ c: RED, l: "Kios buka (actual)" }, { c: TINT, l: "Direncanakan buka (pipeline)" }, { dash: true, l: "Target bulanan" }])}</div></section>
+        <section><h2><b>Pipeline</b> per Fase</h2><div class="sub">Kios approved yang sedang berjalan</div>
+          <div class="card">${svgBars(faseRows, { h: 230 })}<div class="note" style="margin-top:4px">Kandidat belum approved: ${sm.kandidat + sm.menungguApproval} kios (${sm.menungguApproval} menunggu approval SPV).</div></div></section>
+        <section><h2><b>Sebaran</b> per Cluster</h2><div class="sub">Beroperasi vs dalam proses</div>
+          <div class="card">${D.clusters.length ? svgBars(clRows, { b: true, h: 230 }) + legend([{ c: RED, l: "Beroperasi" }, { c: TINT, l: "Dalam proses" }]) : '<div class="empty">Belum ada data</div>'}</div></section>
+        <section><h2><b>Kecepatan</b> per Tahap</h2><div class="sub">Rata-rata hari per tahap (selesai) vs SLA; merah penuh = melewati SLA</div>
+          <div class="card">${svgBars(speedRows, { h: 250, w: 760, pb: 40 })}${legend([{ c: RED, l: "Rata-rata hari" }, { dash: true, l: "SLA" }])}
+          <div class="note" style="margin-top:6px">${D.stageSpeed.some((s) => !s.samples) ? "Tahap tanpa batang = belum ada kios yang menyelesaikan tahap itu." : ""}</div></div></section>
+      </div>
+      <section><h2><b>Perhatian</b> Direksi</h2><div class="sub">Kios blocked, melewati SLA, atau melewati target buka — butuh keputusan/dukungan lintas divisi</div>
+        <div class="card tscroll"><table class="tbl cards"><thead><tr><th>Kios</th><th>Wilayah</th><th>Tahap</th><th>PIC</th><th>Kondisi</th><th>Target buka</th><th>Catatan terakhir</th></tr></thead><tbody>
+        ${D.attention.length ? D.attention.map((k) => `<tr><td data-l=""><b>${esc(k.nama)}</b> <span class="note">${esc(k.kode)}</span></td><td data-l="Wilayah">${esc(k.wilayahNama)}</td><td data-l="Tahap">${k.stage - 1}. ${esc(k.stageName)} <span class="note">(${k.daysInStage} hari)</span></td><td data-l="PIC"><span class="pill">${esc(k.stagePic)}</span></td><td data-l="Kondisi"><span class="st ${k.statusKey}"><i></i>${esc(k.statusLabel)}</span>${flags(k)}</td><td data-l="Target">${fmtM(k.targetBuka)}</td><td data-l="Catatan" class="note">${esc(k.lastNote)}</td></tr>`).join("") : `<tr><td colspan="7"><div class="empty">Tidak ada kios yang membutuhkan perhatian khusus.</div></td></tr>`}</tbody></table></div></section>
+      <section><h2><b>Target</b> Buka Terdekat</h2><div class="sub">Kios yang ditargetkan buka bulan ini dan bulan depan</div>
+        <div class="card tscroll"><table class="tbl cards"><thead><tr><th>Kios</th><th>Wilayah</th><th>Target buka</th><th>Tahap saat ini</th><th>Sisa tahap</th><th>Status</th></tr></thead><tbody>
+        ${D.upcoming.length ? D.upcoming.map((k) => `<tr><td data-l=""><b>${esc(k.nama)}</b> <span class="note">${esc(k.kode)}</span></td><td data-l="Wilayah">${esc(k.wilayahNama)}</td><td data-l="Target">${fmtM(k.targetBuka)}</td><td data-l="Tahap">${k.stage - 1}. ${esc(k.stageName)}</td><td data-l="Sisa tahap">${14 - k.stage} tahap</td><td data-l="Status"><span class="st ${k.statusKey}"><i></i>${esc(k.statusLabel)}</span></td></tr>`).join("") : `<tr><td colspan="6"><div class="empty">Tidak ada kios dengan target buka dua bulan ini.</div></td></tr>`}</tbody></table></div></section>
+      <div class="note" style="margin-top:16px">Definisi: Beroperasi = serah terima operasional selesai. Dalam proses = approved s.d. serah terima. SLA per tahap sesuai kesepakatan Tim Ekspansi (total ${D.slaTotal} hari). Hari dihitung hari kalender.</div>`;
+    $("bPrint").onclick = () => window.print();
+    $("bCopyHl").onclick = () => navigator.clipboard?.writeText(`REPORT DIREKSI EKSPANSI — ${D.monthLabel}\n\n` + D.highlights.map((h) => "• " + h).join("\n")).then(() => toast("Ringkasan ter-copy")).catch(() => toast("Copy manual", true));
   }
 
   boot();

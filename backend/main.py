@@ -728,7 +728,7 @@ def headline(sm: Dict) -> str:
 def report_kios(k: Dict) -> Dict:
     """Payload kios untuk All Divisi — tanpa data internal (sewa, DP, pemilik, komentar)."""
     keys = ["id", "kode", "nama", "wilayahNama", "cluster", "alamat", "stage", "stageName", "stagePic", "fase", "statusKey", "statusLabel",
-            "nextStage", "nextPic", "targetBuka", "daysInStage", "lewatSla", "lewatTarget", "lastNote", "lastAt", "openedAt", "vendorNama", "renovasiPct"]
+            "nextStage", "nextPic", "targetBuka", "daysInStage", "sla", "lewatSla", "stalled", "lewatTarget", "lastNote", "lastAt", "openedAt", "vendorNama", "renovasiPct"]
     return {x: k.get(x) for x in keys}
 
 
@@ -779,6 +779,112 @@ async def report_weekly(t: str = Query("")):
         err(404, "Link laporan tidak valid")
     st = await build_state()
     return weekly_text(st["kios"], summary(st["kios"]))
+
+
+def _add_months(ym: str, n: int) -> str:
+    y, m = int(ym[:4]), int(ym[5:7])
+    m += n
+    y += (m - 1) // 12
+    m = (m - 1) % 12 + 1
+    return f"{y:04d}-{m:02d}"
+
+
+def _days(a: str, b: str) -> float:
+    try:
+        return max(0.0, (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds() / 86400)
+    except Exception:
+        return 0.0
+
+
+async def build_direksi() -> Dict:
+    s = await get_settings()
+    st = await build_state()
+    ek = st["kios"]
+    sm = summary(ek)
+    logs = await db.find("stagelog")
+    by: Dict[str, List[Dict]] = {}
+    for l in logs:
+        by.setdefault(l["kiosId"], []).append(l)
+    sla = s.get("stageSla") or {}
+    cur = this_month()
+    # 1) pembukaan per bulan: 6 bulan ke belakang s.d. 3 bulan ke depan, actual vs target
+    months = [_add_months(cur, i) for i in range(-5, 4)]
+    tgt = s.get("monthlyTarget") or {}
+    opened = {}
+    for k in ek:
+        if k["stage"] == C.LAST_STAGE and k["status"] != "alternatif" and (k.get("openedAt") or ""):
+            opened[k["openedAt"][:7]] = opened.get(k["openedAt"][:7], 0) + 1
+    planned = {}
+    for k in ek:
+        if 2 <= k["stage"] < C.LAST_STAGE and k["status"] != "alternatif" and k.get("targetBuka"):
+            planned[k["targetBuka"]] = planned.get(k["targetBuka"], 0) + 1
+    monthly = [{"month": m, "label": fmt_month(m), "actual": opened.get(m, 0) if m <= cur else None, "target": tgt.get(m, 0), "planned": planned.get(m, 0), "isCurrent": m == cur} for m in months]
+    # 2) pipeline per fase (approved, aktif)
+    act = [k for k in ek if k["status"] != "alternatif"]
+    in_proc = [k for k in act if 2 <= k["stage"] < C.LAST_STAGE]
+    fases = [{"fase": f, "count": sum(1 for k in in_proc if k["fase"] == f)} for f in ("Kontrak", "Renovasi", "Serah Terima")]
+    # 3) per cluster
+    clusters = []
+    for cl in C.CLUSTERS:
+        ks = [k for k in act if k.get("cluster") == cl]
+        if not ks:
+            continue
+        clusters.append({"cluster": cl, "beroperasi": sum(1 for k in ks if k["stage"] == C.LAST_STAGE), "proses": sum(1 for k in ks if 2 <= k["stage"] < C.LAST_STAGE),
+                         "kandidat": sum(1 for k in ks if k["stage"] < 2), "blocked": sum(1 for k in ks if k["status"] == "blocked" and k["stage"] < C.LAST_STAGE)})
+    # 4) durasi per tahap (selesai) vs SLA; lead time DP→buka
+    durs: Dict[int, List[float]] = {}
+    within = total = 0
+    lead = []
+    for k in act:
+        ls = sorted(by.get(k["id"], []), key=lambda x: x["at"])
+        moves = [l for l in ls if l.get("fromStage") != l["toStage"]]
+        for i, l in enumerate(moves):
+            stg = l["toStage"]
+            if i + 1 < len(moves) and 2 <= stg <= 13:
+                d = _days(l["at"], moves[i + 1]["at"])
+                durs.setdefault(stg, []).append(d)
+                lim = sla.get(str(stg))
+                if lim:
+                    total += 1
+                    within += 1 if d <= lim else 0
+        if k["stage"] == C.LAST_STAGE:
+            e2 = next((l["at"] for l in moves if l["toStage"] == 2), None)
+            e14 = next((l["at"] for l in moves if l["toStage"] == C.LAST_STAGE), None)
+            if e2 and e14:
+                lead.append(_days(e2, e14))
+    short = {2: "Pengajuan DP", 3: "Legalitas", 4: "Sepakat SPK", 5: "TTD SPK", 6: "Pelunasan", 7: "Layouting", 8: "RAB", 9: "Bayar Vendor", 10: "Mobilisasi", 11: "Renovasi", 12: "ST Renovasi", 13: "ST Operasional"}
+    stage_speed = [{"stage": i, "n": C.STAGES[i]["n"], "short": short[i], "pic": C.STAGES[i]["pic"], "avg": round(sum(durs[i]) / len(durs[i]), 1) if durs.get(i) else None, "sla": sla.get(str(i)), "samples": len(durs.get(i, []))} for i in range(2, 14)]
+    sla_total = sum(int(v) for v in sla.values()) or 26
+    # 5) perhatian direksi & target dekat
+    attention = [report_kios(k) for k in in_proc if k["status"] == "blocked" or k["lewatSla"] or k["lewatTarget"]]
+    attention.sort(key=lambda k: (k["statusKey"] != "blocked", -(k["daysInStage"] or 0)))
+    nxt = _add_months(cur, 1)
+    upcoming = [report_kios(k) for k in in_proc if k.get("targetBuka") in (cur, nxt)]
+    upcoming.sort(key=lambda k: (k["targetBuka"], -k["stage"]))
+    # 6) highlights
+    ytd = sum(v for m, v in opened.items() if m[:4] == cur[:4])
+    ytd_t = sum(v for m, v in tgt.items() if m[:4] == cur[:4] and m <= cur)
+    hl = []
+    hl.append(f"{sm['beroperasi']} kios telah beroperasi dari pipeline ekspansi; {ytd} dibuka tahun {cur[:4]}" + (f" dari target {ytd_t} s.d. bulan ini" if ytd_t else "") + ".")
+    hl.append(f"{sm['dalamProses']} kios sedang diproses ({sm['kontrak']} kontrak, {sm['renovasi']} renovasi, {sm['serahTerima']} serah terima); {sm['targetBulanIni']} ditargetkan buka {fmt_month(cur)}, {planned.get(nxt, 0)} pada {fmt_month(nxt)}.")
+    if lead:
+        hl.append(f"Rata-rata DP sampai buka {round(sum(lead) / len(lead))} hari (SLA {sla_total} hari); {round(within / total * 100) if total else 0}% perpindahan tahap selesai dalam SLA.")
+    else:
+        hl.append(f"Belum ada kios yang menyelesaikan siklus penuh DP → buka; SLA total yang disepakati {sla_total} hari.")
+    if sm["blocked"] or sm["lewatSla"]:
+        hl.append(f"Namun, {sm['blocked']} kios blocked dan {sm['lewatSla']} kios melewati SLA membutuhkan keputusan/dukungan lintas divisi (lihat tabel Perhatian Direksi).")
+    return {"appName": s["appName"], "asOf": iso(), "month": cur, "monthLabel": fmt_month(cur), "summary": sm, "highlights": hl, "monthly": monthly, "fases": fases,
+            "clusters": clusters, "stageSpeed": stage_speed, "leadTimeAvg": round(sum(lead) / len(lead)) if lead else None, "leadTimeN": len(lead), "slaTotal": sla_total,
+            "slaCompliance": round(within / total * 100) if total else None, "slaSamples": total, "attention": attention, "upcoming": upcoming,
+            "stages": [{"i": x["i"], "n": x["n"]} for x in C.STAGES]}
+
+
+@app.get("/api/direksi")
+async def direksi(t: str = Query(""), ctx: Ctx = Depends(ctx_from_header)):
+    s = await get_settings()
+    if not ctx.member and (not t or not hmac.compare_digest(t, s["shareToken"])):
+        err(404, "Link laporan tidak valid")
+    return await build_direksi()
 
 
 @app.get("/api/public-metrics")
@@ -839,6 +945,7 @@ class SettingsIn(BaseModel):
     stageSla: Optional[Dict[str, int]] = None
     adminPin: Optional[str] = None
     regenerateShareToken: Optional[bool] = None
+    monthlyTarget: Optional[Dict[str, int]] = None
 
 
 @app.put("/api/settings")
@@ -870,6 +977,9 @@ async def update_settings(body: SettingsIn, ctx: Ctx = Depends(require_admin)):
                 err(400, "SLA tidak boleh negatif")
             clean[str(int(k))] = int(v)
         d["stageSla"] = clean
+    if "monthlyTarget" in d:
+        import re as _re2
+        d["monthlyTarget"] = {k: int(v) for k, v in d["monthlyTarget"].items() if _re2.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", str(k)) and int(v) >= 0}
     if "workDays" in d:
         d["workDays"] = sorted({int(x) for x in d["workDays"] if 1 <= int(x) <= 7}) or [1, 2, 3, 4, 5]
     s.update(d)
@@ -1174,6 +1284,11 @@ async def index():
 
 @app.get("/laporan", response_class=HTMLResponse)
 async def laporan_page():
+    return _index_html()
+
+
+@app.get("/direksi", response_class=HTMLResponse)
+async def direksi_page():
     return _index_html()
 
 
