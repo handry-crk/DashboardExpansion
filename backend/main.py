@@ -448,7 +448,7 @@ def check_gates(k: Dict, to: int):
     if to >= 2 and not (k.get("dp") or 0) > 0:
         err(400, "Isi nilai DP sebelum mengajukan Down Payment")
     if to >= 6 and not k.get("spkFile"):
-        err(400, "Unggah file SPK yang sudah ditandatangani sebelum melanjutkan ke Pelunasan Sewa")
+        err(400, "Upload file SPK yang sudah ditandatangani sebelum melanjutkan ke Pelunasan Sewa")
     if to >= 6 and not (k.get("sewaTahun") or 0) > 0:
         err(400, "Isi nilai sewa per tahun sebelum Pelunasan Sewa")
     if to >= 9 and not (k.get("rabNilai") or 0) > 0:
@@ -461,7 +461,7 @@ async def change_stage(kid: str, body: StageIn, ctx: Ctx = Depends(require_login
     if not k:
         err(404, "Kios tidak ditemukan")
     if k["status"] == "alternatif":
-        err(400, "Kios berstatus alternatif. Buka kembali dulu.")
+        err(400, "Kios berstatus alternatif. Reopen dulu.")
     cur = k["stage"]
     to = body.to
     if to < 0 or to > C.LAST_STAGE:
@@ -471,9 +471,9 @@ async def change_stage(kid: str, body: StageIn, ctx: Ctx = Depends(require_login
     note = body.note.strip()
     if to > cur:
         if to - cur > 1 and not ctx.is_admin:
-            err(400, "Tahap hanya bisa maju satu langkah. Admin dapat melompat dengan catatan.")
+            err(400, "Stage hanya bisa maju satu langkah. Manager/Admin dapat melompat dengan catatan.")
         if to - cur > 1 and not note:
-            err(400, "Catatan wajib diisi saat melompati tahap")
+            err(400, "Catatan wajib diisi saat melompati stage")
         if not stage_pic_ok(ctx, cur):
             err(403, f"Tahap '{C.STAGES[cur]['n']}' hanya dapat dimajukan oleh {C.STAGES[cur]['pic']} atau SPV/Admin")
         check_gates(k, to)
@@ -481,7 +481,7 @@ async def change_stage(kid: str, body: StageIn, ctx: Ctx = Depends(require_login
         if not (ctx.is_admin or ctx.role == "SPV"):
             err(403, "Hanya SPV/Admin yang dapat mengembalikan tahap")
         if not note:
-            err(400, "Catatan wajib diisi saat mengembalikan tahap")
+            err(400, "Catatan wajib diisi saat mengembalikan stage")
     fields = {"stage": to, "updatedAt": iso(), "updatedBy": ctx.member["id"]}
     if to > cur and k["status"] in ("blocked", "perhatian"):
         fields["status"] = "ontrack"  # hambatan dianggap selesai saat tahap maju
@@ -528,7 +528,7 @@ async def kios_alternatif(kid: str, body: NoteIn, ctx: Ctx = Depends(require_log
         if not can_edit(ctx):
             err(403, "Role Anda tidak dapat membuka kembali kios")
         await db.update("kios", kid, {"status": "ontrack", "stage": 0, "updatedAt": iso(), "updatedBy": ctx.member["id"]})
-        await add_log(kid, ctx.member["id"], k["stage"], 0, "alternatif", "ontrack", body.note.strip() or "Kios dibuka kembali sebagai kandidat")
+        await add_log(kid, ctx.member["id"], k["stage"], 0, "alternatif", "ontrack", body.note.strip() or "Kios di-reopen sebagai kandidat")
     else:
         if not (ctx.is_admin or ctx.role in ("SPV", "Surveyor")):
             err(403, "Hanya SPV/Surveyor/Admin yang dapat menjadikan kios alternatif")
@@ -590,7 +590,7 @@ async def timeline(kid: str, ctx: Ctx = Depends(require_login)):
 @app.post("/api/kios/{kid}/files")
 async def upload_file(kid: str, kind: str = Query("photo"), file: UploadFile = File(...), ctx: Ctx = Depends(require_login)):
     if not can_edit(ctx):
-        err(403, "Role Anda tidak dapat mengunggah file")
+        err(403, "Role Anda tidak dapat upload file")
     k = await db.get("kios", kid)
     if not k:
         err(404, "Kios tidak ditemukan")
@@ -903,7 +903,7 @@ async def import_csv(file: UploadFile = File(...), ctx: Ctx = Depends(require_ad
         if not w:
             cluster = r.get("cluster") if r.get("cluster") in C.CLUSTERS else "Lainnya"
             w = {"id": nid(), "nama": wn, "kota": r.get("kota", ""), "cluster": cluster, "spvId": "", "surveyorId": "", "status": "cari", "targetKios": 1,
-                 "targetBulan": "", "catatan": "Impor spreadsheet", "visitDate": "", "visitNotes": "", "photos": [], "createdAt": iso(), "updatedAt": iso(), "updatedBy": ctx.member["id"]}
+                 "targetBulan": "", "catatan": "Import spreadsheet", "visitDate": "", "visitNotes": "", "photos": [], "createdAt": iso(), "updatedAt": iso(), "updatedBy": ctx.member["id"]}
             await db.put("wilayah", w)
             wil[wn.lower()] = w
             n_w += 1
@@ -928,7 +928,7 @@ async def import_csv(file: UploadFile = File(...), ctx: Ctx = Depends(require_ad
              "vendorNama": r.get("vendor", ""), "rabNilai": num(r.get("rab")), "renovasiPct": 0, "catatan": r.get("catatan", ""), "stage": stage, "status": status,
              "spkFile": "", "photos": [], "openedAt": upd_iso[:10] if stage == C.LAST_STAGE else "", "createdAt": upd_iso, "createdBy": ctx.member["id"], "updatedAt": upd_iso, "updatedBy": ctx.member["id"]}
         await db.put("kios", k)
-        await db.put("stagelog", {"id": nid(), "kiosId": k["id"], "at": upd_iso, "byId": ctx.member["id"], "fromStage": -1, "toStage": stage, "fromStatus": "", "toStatus": status, "note": "Impor dari spreadsheet"})
+        await db.put("stagelog", {"id": nid(), "kiosId": k["id"], "at": upd_iso, "byId": ctx.member["id"], "fromStage": -1, "toStage": stage, "fromStatus": "", "toStatus": status, "note": "Import dari spreadsheet"})
         existing.add((r["nama"].lower(), w["id"]))
         n_k += 1
     for w in wil.values():

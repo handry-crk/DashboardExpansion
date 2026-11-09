@@ -80,7 +80,7 @@
   function render() {
     const wasLogin = !$("vLogin").classList.contains("hide");
     $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("fab").classList.add("hide");
-    $("who").innerHTML = me ? `${esc(me.name)} · ${esc((S && S.roleLabel && S.roleLabel[me.role]) || me.role)} <button id="btnOut">Keluar</button>` : "";
+    $("who").innerHTML = me ? `${esc(me.name)} · ${esc((S && S.roleLabel && S.roleLabel[me.role]) || me.role)} <button id="btnOut">Logout</button>` : "";
     if (me) $("btnOut").onclick = () => logout();
     if (reportOnly) { $("vDiv").classList.remove("hide"); renderReport(); return; }
     if (mode === "div") {
@@ -103,15 +103,15 @@
     const roles = ["Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance"];
     const roleLabel = { Manager: "Expansion Manager", SPV: "SPV Ekspansi", Surveyor: "Surveyor", SDO: "Store Development Officer", Legal: "Legal", Finance: "Finance" };
     v.innerHTML = `<div class="login">
-      <h2><b>Masuk</b> Tracker</h2>${msg ? `<div class="note" style="margin-bottom:10px">${esc(msg)}</div>` : ""}
-      <div class="tabs"><button data-t="masuk" class="${loginTab === "masuk" ? "on" : ""}">Masuk</button><button data-t="daftar" class="${loginTab === "daftar" ? "on" : ""}">Daftar</button><button data-t="admin" class="${loginTab === "admin" ? "on" : ""}">PIN Admin</button></div>
+      <h2><b>Login</b> Tracker</h2>${msg ? `<div class="note" style="margin-bottom:10px">${esc(msg)}</div>` : ""}
+      <div class="tabs"><button data-t="masuk" class="${loginTab === "masuk" ? "on" : ""}">Login</button><button data-t="daftar" class="${loginTab === "daftar" ? "on" : ""}">Daftar</button><button data-t="admin" class="${loginTab === "admin" ? "on" : ""}">PIN Admin</button></div>
       <div id="loginBody"></div></div>`;
     v.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => { loginTab = b.dataset.t; renderLogin(msg); }));
     const b = $("loginBody");
     if (loginTab === "masuk") {
       b.innerHTML = members.length ? `<div class="f"><div class="full"><label>Nama</label><select id="lMember">${members.map((m) => `<option value="${m.id}" data-haspin="${m.hasPin ? 1 : 0}">${esc(m.name)} — ${esc(roleLabel[m.role] || m.role)}${m.hasPin ? "" : " · PIN belum dibuat"}</option>`).join("")}</select></div>
         <div class="full"><label>PIN</label><input id="lPin" type="password" inputmode="numeric" maxlength="6" placeholder="4–6 digit"><div class="note" id="lPinNote" style="margin-top:4px"></div></div></div>
-        <div class="row" style="margin-top:12px"><button class="btn" id="lGo">Masuk</button></div>` : `<div class="empty">Belum ada anggota. Daftar dulu — pendaftar pertama otomatis menjadi Admin.</div>`;
+        <div class="row" style="margin-top:12px"><button class="btn" id="lGo">Login</button></div>` : `<div class="empty">Belum ada anggota. Daftar dulu — pendaftar pertama otomatis menjadi Admin.</div>`;
       if (members.length) {
         $("lGo").onclick = doLogin; $("lPin").addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
         const upd = () => { const o = $("lMember").selectedOptions[0]; $("lPinNote").textContent = o && o.dataset.haspin === "0" ? "Login pertama: PIN 4–6 digit yang Anda ketik sekarang akan menjadi PIN Anda." : ""; };
@@ -122,13 +122,13 @@
         <div><label>Role</label><select id="rRole">${roles.map((r) => `<option value="${r}">${roleLabel[r]}</option>`).join("")}</select></div>
         <div><label>PIN (4–6 digit)</label><input id="rPin" type="password" inputmode="numeric" maxlength="6"></div>
         <div><label>Email</label><input id="rEmail" type="email"></div><div><label>WhatsApp (08…)</label><input id="rPhone" inputmode="numeric"></div></div>
-        <div class="row" style="margin-top:12px"><button class="btn" id="rGo">Daftar & masuk</button></div>
+        <div class="row" style="margin-top:12px"><button class="btn" id="rGo">Daftar & login</button></div>
         <div class="note" style="margin-top:8px">${members.length ? "" : "Pendaftar pertama otomatis menjadi Admin."}</div>`;
       $("rGo").onclick = async () => {
         try { const d = await api("/api/auth/register", { method: "POST", body: { name: $("rName").value, role: $("rRole").value, pin: $("rPin").value, email: $("rEmail").value, phone: $("rPhone").value } }); onLogin(d); } catch (e) { toast(e.message, true); }
       };
     } else {
-      b.innerHTML = `<div class="f"><div class="full"><label>PIN Admin</label><input id="aPin" type="password" inputmode="numeric" maxlength="6"></div></div><div class="row" style="margin-top:12px"><button class="btn" id="aGo">Masuk sebagai Admin</button></div><div class="note" style="margin-top:8px">PIN cadangan untuk admin (diatur di Panel Admin). Sesi 1 hari.</div>`;
+      b.innerHTML = `<div class="f"><div class="full"><label>PIN Admin</label><input id="aPin" type="password" inputmode="numeric" maxlength="6"></div></div><div class="row" style="margin-top:12px"><button class="btn" id="aGo">Login sebagai Admin</button></div><div class="note" style="margin-top:8px">PIN cadangan untuk admin (diatur di Panel Admin). Sesi 1 hari.</div>`;
       $("aGo").onclick = async () => { try { onLogin(await api("/api/auth/admin-login", { method: "POST", body: { pin: $("aPin").value } })); } catch (e) { toast(e.message, true); } };
     }
   }
@@ -164,7 +164,7 @@
     ${mine.length ? `<section><h2><b>Tugas</b> Saya</h2><div class="sub">Kios yang tahapnya menunggu role ${esc(me.role)}</div><div id="mine"></div></section>` : ""}
     <section><div class="row"><div><h2><b>Wilayah</b> & Pencarian</h2><div class="sub">Pembagian Wilayah → Visit → Pencarian Kios → Approval</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bWil">+ Wilayah</button>` : ""}</div>
       <div class="card tscroll"><table class="tbl cards" id="tWil"></table></div></section>
-    <section><div class="row"><div><h2><b>Pipeline</b> Kios</h2><div class="sub">Klik kartu untuk update tahap, status, dan catatan</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bKios">+ Kios</button>` : ""}</div>
+    <section><div class="row"><div><h2><b>Pipeline</b> Kios</h2><div class="sub">Klik kartu untuk update stage, status, dan catatan</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bKios">+ Kios</button>` : ""}</div>
       <div class="row" style="margin-bottom:10px">
         <select id="fWil" class="inl"><option value="">Semua wilayah</option>${wilNames.map((w) => `<option ${w === filters.wil ? "selected" : ""}>${esc(w)}</option>`).join("")}</select>
         <select id="fSt" class="inl"><option value="">Semua status</option>${["ontrack", "perhatian", "blocked", "alternatif", "selesai"].map((s) => `<option value="${s}" ${s === filters.st ? "selected" : ""}>${S.statusLabel[s]}</option>`).join("")}</select>
@@ -172,7 +172,7 @@
         <label class="chip ${filters.mine ? "on" : ""}" id="fMine" style="margin:0">Hanya tugas saya</label>
       </div>
       <div class="fases" id="fases"></div></section>
-    ${me.isAdmin ? `<section><h2><b>Panel</b> Admin</h2><div class="sub">Anggota, pengaturan, link laporan, impor/ekspor, job</div><div id="panel"></div></section>` : ""}`;
+    ${me.isAdmin ? `<section><h2><b>Panel</b> Admin</h2><div class="sub">Anggota, settings, link laporan, import/export, job</div><div id="panel"></div></section>` : ""}`;
     if ($("bWil")) $("bWil").onclick = () => openWil();
     if ($("bKios")) $("bKios").onclick = () => openKios();
     $("fWil").onchange = (e) => { filters.wil = e.target.value; renderPipeline(); };
@@ -222,12 +222,12 @@
     showDr(`<div class="row"><h3>${k ? esc(k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
       <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
-      ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Tahap berikutnya:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
+      ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Next stage:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
         <div class="row" style="margin-top:8px"><input id="sNote" class="inl" style="flex:1;min-width:160px" placeholder="Catatan (wajib bila kembali / lompat)">
-        ${mayAdvance ? `<button class="btn s" id="bNext">Tahap berikutnya →</button>` : `<span class="note">Hanya ${esc(st.pic)} / SPV yang dapat memajukan</span>`}
+        ${mayAdvance ? `<button class="btn s" id="bNext">Next stage →</button>` : `<span class="note">Hanya ${esc(st.pic)} / SPV yang dapat memajukan stage</span>`}
         ${mayBack ? `<button class="btn o s" id="bBack">← Kembali</button>` : ""}</div>
         <div class="row" style="margin-top:8px"><select id="sStatus" class="inl"><option value="ontrack" ${k.status === "ontrack" ? "selected" : ""}>On Track</option><option value="perhatian" ${k.status === "perhatian" ? "selected" : ""}>Perlu Perhatian</option><option value="blocked" ${k.status === "blocked" ? "selected" : ""}>Blocked</option></select>
-        ${!ro && k.status !== "alternatif" ? `<button class="btn o s" id="bStatus">Ubah status</button>` : ""}${k.status === "alternatif" ? `<button class="btn o s" id="bReopen">Buka kembali</button>` : (!ro ? `<button class="btn g s" id="bAlt">Jadikan alternatif</button>` : "")}</div></div>` : ""}
+        ${!ro && k.status !== "alternatif" ? `<button class="btn o s" id="bStatus">Update status</button>` : ""}${k.status === "alternatif" ? `<button class="btn o s" id="bReopen">Reopen</button>` : (!ro ? `<button class="btn g s" id="bAlt">Jadikan alternatif</button>` : "")}</div></div>` : ""}
       <div class="f">
         <div class="full"><label>Nama / lokasi kios</label><input id="kNama" value="${esc(d.nama || "")}" ${ro ? "disabled" : ""}></div>
         <div><label>Wilayah</label><select id="kWil" ${ro ? "disabled" : ""}><option value="">– pilih –</option>${S.wilayah.map((w) => `<option value="${w.id}" ${w.id === d.wilayahId ? "selected" : ""}>${esc(w.nama)}</option>`).join("")}</select></div>
@@ -244,10 +244,10 @@
         <div><label>Progres renovasi (%)</label><input id="kPct" type="number" min="0" max="100" value="${d.renovasiPct || 0}" ${ro ? "disabled" : ""}></div>
         <div class="full"><label>Catatan umum</label><textarea id="kNote" ${ro ? "disabled" : ""}>${esc(d.catatan || "")}</textarea></div>
       </div>
-      <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}<div class="sp"></div>${k && me.isAdmin ? `<button class="btn g s" id="bDel">Hapus</button>` : ""}</div>
-      ${k ? `<div style="margin-top:14px"><b>Dokumen & foto</b><div class="note">SPK: ${k.spkFile ? `<a href="${esc(k.spkFile)}" target="_blank">${esc(k.spkFileName || "file SPK")}</a>` : "belum ada"} ${!ro ? `· <label style="display:inline;cursor:pointer;color:var(--red)">unggah SPK<input type="file" id="fSpk" class="hide"></label>` : ""}</div>
+      <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}<div class="sp"></div>${k && me.isAdmin ? `<button class="btn g s" id="bDel">Delete</button>` : ""}</div>
+      ${k ? `<div style="margin-top:14px"><b>Dokumen & foto</b><div class="note">SPK: ${k.spkFile ? `<a href="${esc(k.spkFile)}" target="_blank">${esc(k.spkFileName || "file SPK")}</a>` : "belum ada"} ${!ro ? `· <label style="display:inline;cursor:pointer;color:var(--red)">upload SPK<input type="file" id="fSpk" class="hide"></label>` : ""}</div>
         <div class="row" style="margin-top:6px">${(k.photos || []).map((p) => `<a href="${esc(p.url)}" target="_blank" class="pill ink">${esc(p.name || "foto")}</a>`).join("")}${!ro ? `<label class="pill" style="cursor:pointer">+ foto<input type="file" id="fPhoto" accept="image/*" capture="environment" class="hide"></label>` : ""}</div></div>
-      <div style="margin-top:14px"><b>Riwayat & komentar</b>
+      <div style="margin-top:14px"><b>Riwayat update & komentar</b>
         <div class="row" style="margin-top:6px"><input id="cText" class="inl" style="flex:1" placeholder="Tulis komentar… (@nama untuk notifikasi email)"><button class="btn o s" id="bCm">Kirim</button></div>
         <div class="log" id="kLog"><div class="note">Memuat…</div></div></div>` : ""}`);
     $("dClose").onclick = closeDr;
@@ -255,14 +255,14 @@
     const save = async () => { const body = collect(); if (!body.nama) throw new Error("Nama kios wajib diisi"); if (!body.wilayahId) throw new Error("Pilih wilayah"); return k ? api(`/api/kios/${k.id}`, { method: "PUT", body }) : api("/api/kios", { method: "POST", body }); };
     const run = async (fn, ok) => { try { await fn(); toast(ok || "Tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } };
     if ($("bSave")) $("bSave").onclick = () => run(async () => { await save(); closeDr(); });
-    if ($("bNext")) $("bNext").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage + 1, note: $("sNote").value } }); closeDr(); }, "Tahap dimajukan");
-    if ($("bBack")) $("bBack").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage - 1, note: $("sNote").value } }); closeDr(); }, "Tahap dikembalikan");
-    if ($("bStatus")) $("bStatus").onclick = () => run(async () => { await api(`/api/kios/${k.id}/status`, { method: "POST", body: { status: $("sStatus").value, note: $("sNote").value } }); closeDr(); }, "Status diubah");
+    if ($("bNext")) $("bNext").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage + 1, note: $("sNote").value } }); closeDr(); }, "Stage dimajukan");
+    if ($("bBack")) $("bBack").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage - 1, note: $("sNote").value } }); closeDr(); }, "Stage dikembalikan");
+    if ($("bStatus")) $("bStatus").onclick = () => run(async () => { await api(`/api/kios/${k.id}/status`, { method: "POST", body: { status: $("sStatus").value, note: $("sNote").value } }); closeDr(); }, "Status ter-update");
     if ($("bAlt")) $("bAlt").onclick = () => run(async () => { const n = $("sNote").value; if (!n.trim()) throw new Error("Isi catatan alasan di kolom catatan dulu"); await api(`/api/kios/${k.id}/alternatif`, { method: "POST", body: { note: n } }); closeDr(); }, "Kios dijadikan alternatif");
-    if ($("bReopen")) $("bReopen").onclick = () => run(async () => { await api(`/api/kios/${k.id}/alternatif`, { method: "POST", body: { note: "Dibuka kembali" } }); closeDr(); }, "Kios dibuka kembali");
-    if ($("bDel")) $("bDel").onclick = () => confirmTwice("Hapus kios ini? Tekan Hapus lagi untuk konfirmasi.", () => run(async () => { await api(`/api/kios/${k.id}`, { method: "DELETE" }); closeDr(); }, "Dihapus"));
+    if ($("bReopen")) $("bReopen").onclick = () => run(async () => { await api(`/api/kios/${k.id}/alternatif`, { method: "POST", body: { note: "Dibuka kembali" } }); closeDr(); }, "Kios di-reopen");
+    if ($("bDel")) $("bDel").onclick = () => confirmTwice("Delete kios ini? Tekan Delete lagi untuk konfirmasi.", () => run(async () => { await api(`/api/kios/${k.id}`, { method: "DELETE" }); closeDr(); }, "Terhapus"));
     if ($("bCm")) $("bCm").onclick = () => run(async () => { const t = $("cText").value.trim(); if (!t) return; await api(`/api/kios/${k.id}/comments`, { method: "POST", body: { text: t } }); $("cText").value = ""; loadTimeline(k.id); }, "Komentar terkirim");
-    const up = (inputId, kind) => { const el = $(inputId); if (!el) return; el.onchange = () => run(async () => { const fd = new FormData(); fd.append("file", el.files[0]); await api(`/api/kios/${k.id}/files?kind=${kind}`, { method: "POST", body: fd }); closeDr(); }, "File diunggah"); };
+    const up = (inputId, kind) => { const el = $(inputId); if (!el) return; el.onchange = () => run(async () => { const fd = new FormData(); fd.append("file", el.files[0]); await api(`/api/kios/${k.id}/files?kind=${kind}`, { method: "POST", body: fd }); closeDr(); }, "File ter-upload"); };
     up("fSpk", "spk"); up("fPhoto", "photo");
     if (k) loadTimeline(k.id);
   }
@@ -294,7 +294,7 @@
         <div class="full"><label>Catatan visit</label><textarea id="wVNote" ${ro ? "disabled" : ""}>${esc(d.visitNotes || "")}</textarea></div>
         <div class="full"><label>Catatan</label><textarea id="wNote" ${ro ? "disabled" : ""}>${esc(d.catatan || "")}</textarea></div>
       </div>
-      <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}${w && !ro && w.status !== "alternatif" ? `<button class="btn o" id="bAlt">Ganti wilayah alternatif</button>` : ""}<div class="sp"></div>${w && me.isAdmin ? `<button class="btn g s" id="bDel">Hapus</button>` : ""}</div>
+      <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}${w && !ro && w.status !== "alternatif" ? `<button class="btn o" id="bAlt">Ganti wilayah alternatif</button>` : ""}<div class="sp"></div>${w && me.isAdmin ? `<button class="btn g s" id="bDel">Delete</button>` : ""}</div>
       <div id="altBox" class="hide card" style="margin-top:10px"><div class="f"><div><label>Nama wilayah alternatif</label><input id="aNama"></div><div><label>Kota</label><input id="aKota"></div><div class="full"><label>Alasan</label><input id="aNote"></div></div><div class="row" style="margin-top:8px"><button class="btn s" id="aGo">Buat wilayah alternatif</button></div></div>
       ${w ? `<div style="margin-top:14px"><b>Kios di wilayah ini</b>${S.kios.filter((k) => k.wilayahId === w.id).map(card).join("") || '<div class="note">Belum ada kandidat kios</div>'}</div>` : ""}`);
     $("dClose").onclick = closeDr;
@@ -304,7 +304,7 @@
     if ($("bSave")) $("bSave").onclick = () => run(async () => { const b = body(); if (!b.nama) throw new Error("Nama wilayah wajib diisi"); await (w ? api(`/api/wilayah/${w.id}`, { method: "PUT", body: b }) : api("/api/wilayah", { method: "POST", body: b })); closeDr(); });
     if ($("bAlt")) $("bAlt").onclick = () => $("altBox").classList.toggle("hide");
     if ($("aGo")) $("aGo").onclick = () => run(async () => { await api(`/api/wilayah/${w.id}/alternatif`, { method: "POST", body: { namaAlternatif: $("aNama").value, kota: $("aKota").value, catatan: $("aNote").value } }); closeDr(); }, "Wilayah alternatif dibuat");
-    if ($("bDel")) $("bDel").onclick = () => confirmTwice("Hapus wilayah ini? Tekan Hapus lagi untuk konfirmasi.", () => run(async () => { await api(`/api/wilayah/${w.id}`, { method: "DELETE" }); closeDr(); }, "Dihapus"));
+    if ($("bDel")) $("bDel").onclick = () => confirmTwice("Delete wilayah ini? Tekan Delete lagi untuk konfirmasi.", () => run(async () => { await api(`/api/wilayah/${w.id}`, { method: "DELETE" }); closeDr(); }, "Terhapus"));
   }
 
   // ------------------------------------------------------------ admin panel
@@ -313,25 +313,25 @@
     const link = location.origin + "/laporan?t=" + encodeURIComponent(s.shareToken || "");
     $("panel").innerHTML = `
       <div class="card" style="margin-bottom:10px"><b>Link laporan All Divisi</b><div class="note" style="margin:4px 0 8px">Bagikan ke grup divisi lain — read-only, tanpa login, tanpa data sewa/DP/pemilik.</div>
-        <div class="row"><input class="inl" style="flex:1;min-width:200px" value="${esc(link)}" readonly id="shareLink"><button class="btn o s" id="bCopyLink">Copy link</button><button class="btn g s" id="bRegen">Buat token baru</button></div></div>
-      <div class="card" style="margin-bottom:10px"><b>Pengaturan</b><div class="f" style="margin-top:8px">
-        <div><label>Nama aplikasi</label><input id="sApp" value="${esc(s.appName)}"></div><div><label>Email admin (tembusan)</label><input id="sEmail" value="${esc(s.adminEmail || "")}"></div>
+        <div class="row"><input class="inl" style="flex:1;min-width:200px" value="${esc(link)}" readonly id="shareLink"><button class="btn o s" id="bCopyLink">Copy link</button><button class="btn g s" id="bRegen">Generate token baru</button></div></div>
+      <div class="card" style="margin-bottom:10px"><b>Settings</b><div class="f" style="margin-top:8px">
+        <div><label>Nama aplikasi</label><input id="sApp" value="${esc(s.appName)}"></div><div><label>Email admin (CC)</label><input id="sEmail" value="${esc(s.adminEmail || "")}"></div>
         <div><label>Daily digest (WIB)</label><input id="sDigest" value="${esc(s.dailyDigestTime)}" placeholder="17:00"></div><div><label>Nudge PIC (WIB)</label><input id="sNudge" value="${esc(s.nudgeTime)}" placeholder="09:00"></div>
         <div><label>Weekly update: hari (1=Senin)</label><input id="sWDay" type="number" min="1" max="7" value="${s.weeklyUpdateDay}"></div><div><label>Weekly update: jam</label><input id="sWTime" value="${esc(s.weeklyUpdateTime)}"></div>
-        <div><label>Tandai tanpa update setelah (hari)</label><input id="sStalled" type="number" value="${s.stalledDays}"></div><div><label>PIN Admin baru (kosongkan bila tetap)</label><input id="sPin" inputmode="numeric" maxlength="6"></div>
+        <div><label>Tandai "tanpa update" setelah (hari)</label><input id="sStalled" type="number" value="${s.stalledDays}"></div><div><label>PIN Admin baru (kosongkan bila tetap)</label><input id="sPin" inputmode="numeric" maxlength="6"></div>
         <div class="full"><label>SLA hari per tahap</label><div class="row">${S.stages.filter((x) => x.i >= 2 && x.i < 14).map((x) => `<label style="display:flex;align-items:center;gap:4px;margin:0"><span class="note" style="width:150px">${x.i - 1}. ${esc(x.n)}</span><input class="inl sla" data-i="${x.i}" type="number" style="width:64px" value="${(s.stageSla || {})[x.i] ?? ""}"></label>`).join("")}</div></div>
-      </div><div class="row" style="margin-top:10px"><button class="btn" id="bSaveSet">Simpan pengaturan</button></div></div>
+      </div><div class="row" style="margin-top:10px"><button class="btn" id="bSaveSet">Simpan settings</button></div></div>
       <div class="card" style="margin-bottom:10px"><b>Job & data</b><div class="row" style="margin-top:8px">
-        <button class="btn o s" data-job="digest">Kirim daily digest</button><button class="btn o s" data-job="nudge">Kirim nudge PIC</button><button class="btn o s" data-job="weekly">Kirim Weekly Update</button><button class="btn o s" data-job="backup">Backup sekarang</button>
-        <a class="btn g s" href="#" id="bExport">Ekspor CSV</a><label class="btn g s" style="cursor:pointer">Impor CSV<input type="file" id="fImport" accept=".csv" class="hide"></label>${S.kios.length ? "" : `<button class="btn g s" id="bSeed">Isi data contoh</button>`}</div>
-        <div class="note" style="margin-top:6px">Kolom impor: nama; wilayah; kota; cluster; alamat; tahap; status; targetBuka; sewaTahun; dp; vendor; catatan; tanggalUpdate. Email terkirim hanya bila SMTP/Resend diisi di environment.</div><div id="jobOut" class="note"></div></div>
+        <button class="btn o s" data-job="digest">Send daily digest</button><button class="btn o s" data-job="nudge">Send nudge PIC</button><button class="btn o s" data-job="weekly">Send Weekly Update</button><button class="btn o s" data-job="backup">Backup sekarang</button>
+        <a class="btn g s" href="#" id="bExport">Export CSV</a><label class="btn g s" style="cursor:pointer">Import CSV<input type="file" id="fImport" accept=".csv" class="hide"></label>${S.kios.length ? "" : `<button class="btn g s" id="bSeed">Isi data contoh</button>`}</div>
+        <div class="note" style="margin-top:6px">Kolom import: nama; wilayah; kota; cluster; alamat; tahap; status; targetBuka; sewaTahun; dp; vendor; catatan; tanggalUpdate. Email terkirim hanya bila SMTP/Resend diisi di environment.</div><div id="jobOut" class="note"></div></div>
       <div class="card"><div class="row"><b>Anggota</b><div class="sp"></div><button class="btn g s" id="bTeam">Tambah tim dari dokumen Flow</button></div><div style="margin-top:8px" id="members"></div></div>`;
-    $("bCopyLink").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Link disalin")).catch(() => toast("Salin manual dari kolom", true));
+    $("bCopyLink").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Link ter-copy")).catch(() => toast("Copy manual dari kolom", true));
     $("bRegen").onclick = () => confirmTwice("Token lama akan mati. Tekan lagi untuk konfirmasi.", () => saveSettings({ regenerateShareToken: true }));
     $("bSaveSet").onclick = () => { const sla = {}; document.querySelectorAll(".sla").forEach((i) => { if (i.value) sla[i.dataset.i] = +i.value; }); saveSettings({ appName: $("sApp").value, adminEmail: $("sEmail").value, dailyDigestTime: $("sDigest").value, nudgeTime: $("sNudge").value, weeklyUpdateDay: +$("sWDay").value, weeklyUpdateTime: $("sWTime").value, stalledDays: +$("sStalled").value, stageSla: sla, adminPin: $("sPin").value || undefined }); };
     document.querySelectorAll("[data-job]").forEach((b) => (b.onclick = async () => { b.disabled = true; try { const r = await api(`/api/jobs/${b.dataset.job}/run`, { method: "POST" }); $("jobOut").textContent = JSON.stringify(r).slice(0, 400); toast("Job dijalankan"); } catch (e) { toast(e.message, true); } b.disabled = false; }));
-    $("bExport").onclick = async (e) => { e.preventDefault(); try { const r = await fetch("/api/export.csv", { headers: { Authorization: "Bearer " + token } }); const b = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "expansion-tracker.csv"; a.click(); } catch (e2) { toast("Gagal ekspor", true); } };
-    $("fImport").onchange = async () => { const fd = new FormData(); fd.append("file", $("fImport").files[0]); try { const r = await api("/api/import", { method: "POST", body: fd }); toast(`Impor: ${r.kiosBaru} kios, ${r.wilayahBaru} wilayah baru`); refresh(true); } catch (e) { toast(e.message, true); } };
+    $("bExport").onclick = async (e) => { e.preventDefault(); try { const r = await fetch("/api/export.csv", { headers: { Authorization: "Bearer " + token } }); const b = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "expansion-tracker.csv"; a.click(); } catch (e2) { toast("Gagal export", true); } };
+    $("fImport").onchange = async () => { const fd = new FormData(); fd.append("file", $("fImport").files[0]); try { const r = await api("/api/import", { method: "POST", body: fd }); toast(`Import: ${r.kiosBaru} kios, ${r.wilayahBaru} wilayah baru`); refresh(true); } catch (e) { toast(e.message, true); } };
     if ($("bSeed")) $("bSeed").onclick = async () => { try { await api("/api/seed", { method: "POST" }); toast("Data contoh terisi"); refresh(true); } catch (e) { toast(e.message, true); } };
     $("bTeam").onclick = async () => { try { const r = await api("/api/team/preset", { method: "POST" }); toast(`${r.ditambahkan} anggota ditambahkan`); refresh(true); } catch (e) { toast(e.message, true); } };
     $("members").innerHTML = S.members.map((m) => `<div class="mcard"><div class="row"><div><b>${esc(m.name)} ${m.isAdmin ? '<span class="pill">Admin</span>' : ""}${m.active ? "" : ' <span class="pill m">nonaktif</span>'}${m.hasPin === false ? ' <span class="pill m">PIN belum dibuat</span>' : ""}</b><span class="note">${esc(m.email || "–")} · ${esc(m.phone || "–")}</span></div><div class="sp"></div>
@@ -345,12 +345,12 @@
     document.querySelectorAll(".mAdm").forEach((b) => (b.onclick = () => upd(b.dataset.id, { isAdmin: b.dataset.v === "1" })));
     document.querySelectorAll(".mPin").forEach((b) => (b.onclick = () => { const pin = window.prompt ? prompt("PIN baru (4–6 digit)") : null; if (!pin) return; api(`/api/members/${b.dataset.id}/reset-pin`, { method: "POST", body: { pin } }).then(() => toast("PIN direset")).catch((e) => toast(e.message, true)); }));
   }
-  async function saveSettings(body) { try { await api("/api/settings", { method: "PUT", body }); toast("Pengaturan tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } }
+  async function saveSettings(body) { try { await api("/api/settings", { method: "PUT", body }); toast("Settings tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } }
 
   // ------------------------------------------------------------ reporting view
   function renderReport() {
     const v = $("vDiv");
-    if (!R) { v.innerHTML = `<div class="empty" style="margin-top:20px">${shareT || token ? "Memuat laporan…" : "Link laporan tidak valid."}</div>`; return; }
+    if (!R) { v.innerHTML = `<div class="empty" style="margin-top:20px">${shareT || token ? "Loading laporan…" : "Link laporan tidak valid."}</div>`; return; }
     const sm = R.summary;
     const inProc = R.kios.filter((k) => k.stage < 14).sort((a, b) => (a.targetBuka || "9").localeCompare(b.targetBuka || "9") || b.stage - a.stage);
     const open = R.kios.filter((k) => k.stage === 14).sort((a, b) => (b.openedAt || "").localeCompare(a.openedAt || ""));
@@ -372,7 +372,7 @@
         <table class="tbl"><thead><tr><th>Kelompok tahap</th><th>Tahap</th><th class="r">SLA (hari)</th></tr></thead><tbody>${R.slaGroups.map((g) => `<tr><td><b>${esc(g.nama)}</b></td><td class="note">${g.stages.map((i) => i - 1).join(", ")}</td><td class="r"><b>${g.hari}</b></td></tr>`).join("")}</tbody></table></div>` : ""}</section>
       <section><div class="row"><div><h2><b>Weekly</b> Update</h2><div class="sub">${R.weeklyAt ? "Terakhir dikirim " + fmtDT(R.weeklyAt) : "Teks siap kirim ke grup koordinasi"}</div></div><div class="sp"></div><button class="btn o s" id="bCopyW">Copy teks</button></div>
         <pre class="weekly" id="weekly">${esc(R.weeklyText)}</pre></section>`;
-    $("bCopyW").onclick = () => navigator.clipboard?.writeText(R.weeklyText).then(() => toast("Teks disalin")).catch(() => toast("Pilih teks lalu salin manual", true));
+    $("bCopyW").onclick = () => navigator.clipboard?.writeText(R.weeklyText).then(() => toast("Teks ter-copy")).catch(() => toast("Pilih teks lalu copy manual", true));
   }
 
   boot();
