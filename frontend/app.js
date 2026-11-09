@@ -41,7 +41,7 @@
     if (reportOnly) { $("modes").classList.add("hide"); }
     await refresh();
     document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-    pollTimer = setInterval(() => { if (!document.hidden && !$("dr").classList.contains("on")) refresh(true); }, 8000);
+    pollTimer = setInterval(() => { if (!document.hidden && !$("dr").classList.contains("on") && (token || reportOnly || shareT)) refresh(true); }, 8000);
   }
 
   function setMode(m) {
@@ -64,6 +64,7 @@
         setSync("ok", "Live · " + fmtDT(S.serverTime));
       } else {
         setSync("", "Belum login");
+        if (quiet) return;
       }
     } catch (e) {
       setSync("off", e.message);
@@ -75,16 +76,18 @@
   function logout(reload = true) { token = ""; me = null; S = null; localStorage.removeItem("crk_token"); if (reload) location.reload(); }
 
   // ------------------------------------------------------------ render root
+  let loginShown = false;
   function render() {
+    const wasLogin = !$("vLogin").classList.contains("hide");
     $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("fab").classList.add("hide");
     $("who").innerHTML = me ? `${esc(me.name)} · ${esc(me.role)} <button id="btnOut">Keluar</button>` : "";
     if (me) $("btnOut").onclick = () => logout();
     if (reportOnly) { $("vDiv").classList.remove("hide"); renderReport(); return; }
     if (mode === "div") {
-      if (!token && !shareT) { $("vLogin").classList.remove("hide"); renderLogin("Login untuk melihat Reporting, atau buka link laporan dari Admin."); return; }
+      if (!token && !shareT) { $("vLogin").classList.remove("hide"); if (!wasLogin) renderLogin("Login untuk melihat Reporting, atau buka link laporan dari Admin."); return; }
       $("vDiv").classList.remove("hide"); renderReport(); return;
     }
-    if (!token) { $("vLogin").classList.remove("hide"); renderLogin(); return; }
+    if (!token) { $("vLogin").classList.remove("hide"); if (!wasLogin) renderLogin(); return; }
     if (!S) return;
     $("vInt").classList.remove("hide"); renderInternal();
     if (canEdit() && window.innerWidth < 700) $("fab").classList.remove("hide");
