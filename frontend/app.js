@@ -40,7 +40,7 @@
     $("fab").addEventListener("click", () => openKios());
     if (reportOnly) { $("modes").classList.add("hide"); }
     await refresh();
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && (token || reportOnly || shareT)) refresh(true); });
     pollTimer = setInterval(() => { if (!document.hidden && !$("dr").classList.contains("on") && (token || reportOnly || shareT)) refresh(true); }, 8000);
   }
 

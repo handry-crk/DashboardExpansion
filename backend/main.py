@@ -1083,16 +1083,29 @@ async def startup():
         app.state.scheduler = sch
 
 
+def _asset_version() -> str:
+    try:
+        return str(int(max(os.path.getmtime(os.path.join(FRONTEND, f)) for f in ("app.js", "style.css"))))
+    except Exception:
+        return "1"
+
+
+def _index_html() -> HTMLResponse:
+    with open(os.path.join(FRONTEND, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    v = _asset_version()
+    html = html.replace("/static/app.js", f"/static/app.js?v={v}").replace("/static/style.css", f"/static/style.css?v={v}")
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    with open(os.path.join(FRONTEND, "index.html"), encoding="utf-8") as f:
-        return f.read()
+    return _index_html()
 
 
 @app.get("/laporan", response_class=HTMLResponse)
 async def laporan_page():
-    with open(os.path.join(FRONTEND, "index.html"), encoding="utf-8") as f:
-        return f.read()
+    return _index_html()
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
