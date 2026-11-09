@@ -1051,8 +1051,12 @@ async def get_backup(name: str, ctx: Ctx = Depends(require_admin)):
 # ---------------------------------------------------------------- health & static
 @app.get("/api/health")
 async def health():
-    ok = await db.ping()
-    return {"ok": ok, "db": "mock" if C.USE_MOCK_DB or not C.MONGO_URL else ("mongo" if ok else "mongo-unreachable"), "time": iso()}
+    try:
+        ok = await asyncio.wait_for(db.ping(), timeout=5)
+    except Exception:
+        ok = False
+    mode = "mock" if C.USE_MOCK_DB or not C.MONGO_URL else ("mongo" if ok else "mongo-unreachable")
+    return JSONResponse({"ok": ok, "db": mode, "port": os.getenv("PORT", "8080"), "time": iso()}, status_code=200 if ok else 503)
 
 
 @app.on_event("startup")
@@ -1067,7 +1071,10 @@ async def startup():
             await db.ensure_indexes()
         except Exception as e:
             log.warning("Index Mongo gagal dibuat: %s", e)
-    await get_settings()
+    try:
+        await asyncio.wait_for(get_settings(), timeout=15)
+    except Exception as e:
+        log.error("Database belum bisa dijangkau saat startup (%s). App tetap berjalan; cek MONGO_URL. /api/health akan melaporkan status DB.", e)
     if os.getenv("DISABLE_SCHEDULER", "") != "1":
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         sch = AsyncIOScheduler(timezone=str(C.TZ))
