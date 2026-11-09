@@ -87,8 +87,18 @@ class MongoDB:
     def __init__(self, url: str):
         from motor.motor_asyncio import AsyncIOMotorClient
         self.client = AsyncIOMotorClient(url, serverSelectionTimeoutMS=5000)
-        name = (url.rsplit("/", 1)[-1].split("?")[0]) or "crk_expansion"
-        self.db = self.client[name if name and name not in ("", "admin") else "crk_expansion"]
+        # Nama DB: dari env MONGO_DB, lalu dari path URL (mongodb://host:port/<db>?...), default crk_expansion.
+        name = os.getenv("MONGO_DB", "").strip()
+        if not name:
+            try:
+                from urllib.parse import urlparse
+                path = urlparse(url).path.strip("/")
+                name = path.split("/")[0] if path else ""
+            except Exception:
+                name = ""
+        if not name or name == "admin" or any(c in name for c in ' ./\\"$*<>:|?'):
+            name = "crk_expansion"
+        self.db = self.client[name]
 
     async def ping(self) -> bool:
         try:
