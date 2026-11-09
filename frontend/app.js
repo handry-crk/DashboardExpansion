@@ -52,16 +52,26 @@
   }
   if (!reportOnly && location.hash === "#reporting") mode = "div";
 
+  let lastSig = "";
+  const sigOf = (o) => { if (!o) return ""; const c = { ...o }; delete c.serverTime; delete c.today; return JSON.stringify(c); };
+  const typing = () => { const a = document.activeElement; return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT") && a.type !== "checkbox"; };
   async function refresh(quiet) {
     try {
       if (reportOnly || (!token && mode === "div" && shareT)) {
         R = await api("/api/report?t=" + encodeURIComponent(shareT));
         setSync("ok", "Live · " + fmtDT(R.serverTime));
+        if (quiet) { const g = sigOf(R); if (g === lastSig) return; lastSig = g; }
+        else lastSig = sigOf(R);
       } else if (token) {
         S = await api("/api/state");
         me = S.me;
         if (mode === "div") R = await api("/api/report");
         setSync("ok", "Live · " + fmtDT(S.serverTime));
+        if (quiet) {
+          const g = sigOf(S) + sigOf(R);
+          if (g === lastSig || typing()) return; // tidak ada perubahan, atau user sedang mengetik
+          lastSig = g;
+        } else lastSig = sigOf(S) + sigOf(R);
       } else {
         setSync("", "Belum login");
         if (quiet) return;

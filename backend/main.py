@@ -849,6 +849,25 @@ async def update_settings(body: SettingsIn, ctx: Ctx = Depends(require_admin)):
             s["adminPinHash"] = hash_pin(pin)
     if d.pop("regenerateShareToken", False):
         s["shareToken"] = secrets.token_urlsafe(18)
+    import re as _re
+    for key in ("weeklyUpdateTime", "dailyDigestTime", "nudgeTime"):
+        if key in d and d[key] and not _re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", d[key]):
+            err(400, f"Format jam {key} harus HH:MM (contoh 17:00)")
+    if "weeklyUpdateDay" in d and not (1 <= int(d["weeklyUpdateDay"]) <= 7):
+        err(400, "Hari Weekly Update harus 1 (Senin) sampai 7 (Minggu)")
+    if "stalledDays" in d and int(d["stalledDays"]) < 1:
+        err(400, "Batas 'tanpa update' minimal 1 hari")
+    if "stageSla" in d:
+        clean = {}
+        for k, v in d["stageSla"].items():
+            if not str(k).isdigit() or not (2 <= int(k) <= 13):
+                continue
+            if int(v) < 0:
+                err(400, "SLA tidak boleh negatif")
+            clean[str(int(k))] = int(v)
+        d["stageSla"] = clean
+    if "workDays" in d:
+        d["workDays"] = sorted({int(x) for x in d["workDays"] if 1 <= int(x) <= 7}) or [1, 2, 3, 4, 5]
     s.update(d)
     await db.put("settings", s)
     return public_settings(s)

@@ -252,3 +252,18 @@ async def test_wilayah_back_to_cari_when_kios_alternatif(cl):
     assert w["status"] == "cari"
     r = await cl.post(f"/api/kios/{T['kid']}/alternatif", json={"note": "lanjut lagi"}, headers=H("dimas"))
     assert r.json()["stage"] == 0
+
+
+async def test_settings_sla_validation(cl):
+    r = await cl.put("/api/settings", json={"stageSla": {"2": 2, "11": 12, "99": 5}, "weeklyUpdateTime": "08:30"}, headers=H("dimas"))
+    assert r.status_code == 200
+    assert r.json()["stageSla"] == {"2": 2, "11": 12}
+    r = await cl.put("/api/settings", json={"weeklyUpdateTime": "8.30"}, headers=H("dimas"))
+    assert r.status_code == 400
+    r = await cl.put("/api/settings", json={"weeklyUpdateDay": 0}, headers=H("dimas"))
+    assert r.status_code == 400
+    r = await cl.put("/api/settings", json={"stageSla": {"3": -1}}, headers=H("dimas"))
+    assert r.status_code == 400
+    # SLA baru langsung memengaruhi flag: kios di stage 5 selama 0 hari, SLA 0 = tidak ada flag
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    assert st["settings"]["stageSla"]["11"] == 12
