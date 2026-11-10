@@ -14,7 +14,7 @@
   const direksiOnly = location.pathname.startsWith("/direksi");
   let token = localStorage.getItem("crk_token") || "";
   let me = null, S = null, R = null, D = null, mode = direksiOnly ? "dir" : (reportOnly ? "div" : "int");
-  let filters = { wil: "", st: "", pic: "", mine: false };
+  let filters = { wil: "", st: "", pic: "", mine: false, wSur: "", wSt: "" };
   let pollTimer = null;
 
   function toast(m, err) { const t = $("toast"); t.textContent = m; t.className = "toast" + (err ? " err" : ""); t.style.display = "block"; clearTimeout(t._t); t._t = setTimeout(() => (t.style.display = "none"), err ? 4000 : 2200); }
@@ -185,6 +185,11 @@
       </div></section>
     ${mine.length ? `<section><h2><b>Tugas</b> Saya</h2><div class="sub">Kios yang tahapnya menunggu role ${esc(me.role)}</div><div id="mine"></div></section>` : ""}
     <section><div class="row"><div><h2><b>Wilayah</b> & Pencarian</h2><div class="sub">Pembagian Wilayah → Visit → Pencarian Kios → Approval</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bWil">+ Wilayah</button>` : ""}</div>
+      <div class="row" style="margin-bottom:10px">
+        <select id="fWSur" class="inl"><option value="">Semua surveyor</option>${S.members.filter((m) => m.role === "Surveyor" || S.wilayah.some((w) => w.surveyorId === m.id)).sort((a, b) => a.name.localeCompare(b.name)).map((m) => `<option value="${m.id}" ${m.id === filters.wSur ? "selected" : ""}>${esc(m.name)}</option>`).join("")}<option value="__none" ${filters.wSur === "__none" ? "selected" : ""}>Belum ada surveyor</option></select>
+        <select id="fWSt" class="inl"><option value="">Semua status</option>${["dibagi", "visit", "cari", "alternatif", "selesai"].map((x) => `<option value="${x}" ${x === filters.wSt ? "selected" : ""}>${S.wilStatusLabel[x]}</option>`).join("")}</select>
+        ${me.role === "Surveyor" ? `<label class="chip ${filters.wSur === me.id ? "on" : ""}" id="fWMine" style="margin:0">Wilayah saya</label>` : ""}
+        <span class="note" id="fWCount"></span></div>
       <div class="card tscroll"><table class="tbl cards" id="tWil"></table></div></section>
     <section><div class="row"><div><h2><b>Pipeline</b> Kios</h2><div class="sub">Klik kartu untuk update stage, status, dan catatan</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bKios">+ Kios</button>` : ""}</div>
       <div class="row" style="margin-bottom:10px">
@@ -203,10 +208,14 @@
     $("fMine").onclick = () => { filters.mine = !filters.mine; $("fMine").classList.toggle("on", filters.mine); renderPipeline(); };
     if (mine.length) $("mine").innerHTML = mine.slice(0, 8).map(card).join("");
     // wilayah table
-    const rows = S.wilayah.slice().sort((a, b) => a.nama.localeCompare(b.nama));
+    $("fWSur").onchange = (e) => { filters.wSur = e.target.value; renderInternal(); };
+    $("fWSt").onchange = (e) => { filters.wSt = e.target.value; renderInternal(); };
+    if ($("fWMine")) $("fWMine").onclick = () => { filters.wSur = filters.wSur === me.id ? "" : me.id; renderInternal(); };
+    const rows = S.wilayah.filter((w) => (!filters.wSur || (filters.wSur === "__none" ? !w.surveyorId : w.surveyorId === filters.wSur)) && (!filters.wSt || w.status === filters.wSt)).sort((a, b) => a.nama.localeCompare(b.nama));
+    $("fWCount").textContent = (filters.wSur || filters.wSt) ? `${rows.length} dari ${S.wilayah.length} wilayah` : "";
     $("tWil").innerHTML = `<thead><tr><th>Wilayah</th><th>Kota</th><th>SPV</th><th>Surveyor</th><th>Status</th><th class="r">Kios</th><th>Catatan</th></tr></thead><tbody>` +
       (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span></td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
-        : `<tr><td colspan="7"><div class="empty">Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).</div></td></tr>`) + `</tbody>`;
+        : `<tr><td colspan="7"><div class="empty">${S.wilayah.length ? "Tidak ada wilayah yang cocok dengan filter." : 'Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).'}</div></td></tr>`) + `</tbody>`;
     $("tWil").querySelectorAll("tr[data-w]").forEach((tr) => (tr.onclick = () => openWil(tr.dataset.w)));
     renderPipeline();
     if (me.isAdmin) renderPanel();
