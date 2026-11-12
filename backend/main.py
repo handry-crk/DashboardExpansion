@@ -457,14 +457,21 @@ class StageIn(BaseModel):
     note: str = ""
 
 
-def check_gates(k: Dict, to: int):
-    if to >= 2 and not (k.get("dp") or 0) > 0:
+def check_gates(k: Dict, to: int, cur: Optional[int] = None):
+    """Gate hanya diperiksa saat kios MELEWATI batasnya (cur < gate <= to), sehingga kios hasil import
+    yang sudah berada di tahap lanjut tidak diminta data tahap yang telah dilalui."""
+    cur = k["stage"] if cur is None else cur
+
+    def crossing(g: int) -> bool:
+        return cur < g <= to
+
+    if crossing(2) and not (k.get("dp") or 0) > 0:
         err(400, "Isi nilai DP sebelum mengajukan Down Payment")
-    if to >= 6 and not k.get("spkFile"):
+    if crossing(6) and not k.get("spkFile"):
         err(400, "Upload file SPK yang sudah ditandatangani sebelum melanjutkan ke Pelunasan Sewa")
-    if to >= 6 and not (k.get("sewaTahun") or 0) > 0:
+    if crossing(6) and not (k.get("sewaTahun") or 0) > 0:
         err(400, "Isi nilai sewa per tahun sebelum Pelunasan Sewa")
-    if to >= 9 and not (k.get("rabNilai") or 0) > 0:
+    if crossing(9) and not (k.get("rabNilai") or 0) > 0:
         err(400, "Isi nilai RAB vendor yang disepakati sebelum Pengajuan Pembayaran Vendor")
 
 
@@ -491,7 +498,7 @@ async def change_stage(kid: str, body: StageIn, ctx: Ctx = Depends(require_login
             err(400, "Catatan wajib diisi saat melompati stage")
         if not stage_pic_ok(ctx, cur):
             err(403, f"Tahap '{C.STAGES[cur]['n']}' hanya dapat dimajukan oleh {C.STAGES[cur]['pic']} atau SPV/Admin")
-        check_gates(k, to)
+        check_gates(k, to, cur)
     else:
         if not (ctx.is_admin or ctx.role == "SPV"):
             err(403, "Hanya SPV/Admin yang dapat mengembalikan tahap")
