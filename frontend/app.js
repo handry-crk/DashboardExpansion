@@ -15,7 +15,7 @@
   let token = localStorage.getItem("crk_token") || "";
   let me = null, S = null, R = null, D = null, mode = direksiOnly ? "dir" : (reportOnly ? "div" : "int");
   let filters = { wil: "", st: "", pic: "", mine: false, wSur: "", wSt: "", vFrom: "", vTo: "" };
-  let pollTimer = null;
+  let pollTimer = null, fabBlocked = false, fabWanted = false;
 
   function toast(m, err) { const t = $("toast"); t.textContent = m; t.className = "toast" + (err ? " err" : ""); t.style.display = "block"; clearTimeout(t._t); t._t = setTimeout(() => (t.style.display = "none"), err ? 4000 : 2200); }
   function setSync(cls, txt) { const s = $("sync"); s.className = "sync " + cls; s.querySelector("span").textContent = txt; }
@@ -37,6 +37,14 @@
   // ------------------------------------------------------------ boot
   async function boot() {
     document.querySelectorAll("#modes button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.m)));
+    const shortLabels = { int: "Tim Ekspansi", div: "Reporting", dir: "Direksi" };
+    const applyLabels = () => { if (window.innerWidth < 700) document.querySelectorAll("#modes button").forEach((b) => { b.dataset.full = b.dataset.full || b.textContent; b.textContent = shortLabels[b.dataset.m] || b.textContent; }); else document.querySelectorAll("#modes button").forEach((b) => { if (b.dataset.full) b.textContent = b.dataset.full; }); };
+    applyLabels(); window.addEventListener("resize", applyLabels);
+    // 3) FAB tidak menutupi Panel Admin: sembunyikan saat panel terlihat
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((es) => { es.forEach((e) => { fabBlocked = e.isIntersecting; $("fab").classList.toggle("hide", fabBlocked || !fabWanted); }); }, { threshold: 0.05 });
+      new MutationObserver(() => { const pn = $("panel"); if (pn && !pn._obs) { pn._obs = true; io.observe(pn); } }).observe(document.body, { childList: true, subtree: true });
+    }
     $("ov").addEventListener("click", closeDr);
     $("fab").addEventListener("click", () => openKios());
     if (reportOnly || direksiOnly) { $("modes").classList.add("hide"); }
@@ -50,6 +58,8 @@
     document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.m === m));
     try { if (!reportOnly && !direksiOnly) location.hash = m === "div" ? "reporting" : m === "dir" ? "direksi" : "internal"; } catch (e) { }
     render();
+    if ((m === "div" && !R) || (m === "dir" && !D) || m === "int") refresh(true);
+    window.scrollTo(0, 0);
   }
   if (!reportOnly && !direksiOnly && location.hash === "#reporting") mode = "div";
   if (!reportOnly && !direksiOnly && location.hash === "#direksi") mode = "dir";
@@ -96,7 +106,7 @@
   let loginShown = false;
   function render() {
     const wasLogin = !$("vLogin").classList.contains("hide");
-    $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("vDir").classList.add("hide"); $("fab").classList.add("hide");
+    $("vLogin").classList.add("hide"); $("vInt").classList.add("hide"); $("vDiv").classList.add("hide"); $("vDir").classList.add("hide"); $("fab").classList.add("hide"); fabWanted = false;
     $("who").innerHTML = me ? `${esc(me.name)} · ${esc((S && S.roleLabel && S.roleLabel[me.role]) || me.role)} <button id="btnOut">Logout</button>` : "";
     if (me) $("btnOut").onclick = () => logout();
     if (direksiOnly) { $("vDir").classList.remove("hide"); renderDireksi(); return; }
@@ -112,7 +122,8 @@
     if (!token) { $("vLogin").classList.remove("hide"); if (!wasLogin) renderLogin(); return; }
     if (!S) return;
     $("vInt").classList.remove("hide"); renderInternal();
-    if (canEdit() && window.innerWidth < 700) $("fab").classList.remove("hide");
+    fabWanted = canEdit() && window.innerWidth < 700;
+    if (fabWanted && !fabBlocked) $("fab").classList.remove("hide");
   }
   const canEdit = () => me && (me.isAdmin || ["Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance"].includes(me.role));
 

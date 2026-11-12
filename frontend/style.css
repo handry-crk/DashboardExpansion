@@ -120,7 +120,7 @@ body.lock{overflow:hidden}
 .tbl.cards td{display:block;border:0;padding:3px 10px}.tbl.cards td:empty{display:none}
 .tbl.cards td:before{content:attr(data-l);font-size:11px;color:var(--muted);display:inline-block;min-width:92px;margin-right:6px}
 .tbl.cards td[data-l=""]:before{display:none}.tbl.cards td[data-l=""]{padding-bottom:6px}
-.brand h1{font-size:22px}.brand .tag{display:none}.brand .logo{font-size:10px}header{position:static}
+.brand h1{font-size:22px}.brand .tag{display:none}.brand .logo{font-size:10px}header{position:static}.hright{max-width:46%}.who{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dirhead h2{font-size:22px!important}.dirhead{margin-top:14px}
 .fase{padding:8px 10px}.fase .note{display:none}.fase .c{margin-bottom:2px}
 }
 
