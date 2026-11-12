@@ -14,7 +14,7 @@
   const direksiOnly = location.pathname.startsWith("/direksi");
   let token = localStorage.getItem("crk_token") || "";
   let me = null, S = null, R = null, D = null, mode = direksiOnly ? "dir" : (reportOnly ? "div" : "int");
-  let filters = { wil: "", st: "", pic: "", mine: false, wSur: "", wSt: "" };
+  let filters = { wil: "", st: "", pic: "", mine: false, wSur: "", wSt: "", vFrom: "", vTo: "" };
   let pollTimer = null;
 
   function toast(m, err) { const t = $("toast"); t.textContent = m; t.className = "toast" + (err ? " err" : ""); t.style.display = "block"; clearTimeout(t._t); t._t = setTimeout(() => (t.style.display = "none"), err ? 4000 : 2200); }
@@ -188,7 +188,9 @@
       <div class="row" style="margin-bottom:10px">
         <select id="fWSur" class="inl"><option value="">Semua surveyor</option>${S.members.filter((m) => m.role === "Surveyor" || S.wilayah.some((w) => w.surveyorId === m.id)).sort((a, b) => a.name.localeCompare(b.name)).map((m) => `<option value="${m.id}" ${m.id === filters.wSur ? "selected" : ""}>${esc(m.name)}</option>`).join("")}<option value="__none" ${filters.wSur === "__none" ? "selected" : ""}>Belum ada surveyor</option></select>
         <select id="fWSt" class="inl"><option value="">Semua status</option>${["dibagi", "visit", "cari", "alternatif", "selesai"].map((x) => `<option value="${x}" ${x === filters.wSt ? "selected" : ""}>${S.wilStatusLabel[x]}</option>`).join("")}</select>
+        <label style="display:flex;align-items:center;gap:4px;margin:0"><span class="note">Visit</span><input id="fVFrom" type="date" class="inl" style="width:150px" value="${filters.vFrom}"><span class="note">–</span><input id="fVTo" type="date" class="inl" style="width:150px" value="${filters.vTo}"></label>
         ${me.role === "Surveyor" ? `<label class="chip ${filters.wSur === me.id ? "on" : ""}" id="fWMine" style="margin:0">Wilayah saya</label>` : ""}
+        ${(filters.wSur || filters.wSt || filters.vFrom || filters.vTo) ? `<button class="btn g s" id="fWReset">Reset filter</button>` : ""}
         <span class="note" id="fWCount"></span></div>
       <div class="card tscroll"><table class="tbl cards" id="tWil"></table></div></section>
     <section><div class="row"><div><h2><b>Pipeline</b> Kios</h2><div class="sub">Klik kartu untuk update stage, status, dan catatan</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bKios">+ Kios</button>` : ""}</div>
@@ -211,11 +213,16 @@
     $("fWSur").onchange = (e) => { filters.wSur = e.target.value; renderInternal(); };
     $("fWSt").onchange = (e) => { filters.wSt = e.target.value; renderInternal(); };
     if ($("fWMine")) $("fWMine").onclick = () => { filters.wSur = filters.wSur === me.id ? "" : me.id; renderInternal(); };
-    const rows = S.wilayah.filter((w) => (!filters.wSur || (filters.wSur === "__none" ? !w.surveyorId : w.surveyorId === filters.wSur)) && (!filters.wSt || w.status === filters.wSt)).sort((a, b) => a.nama.localeCompare(b.nama));
-    $("fWCount").textContent = (filters.wSur || filters.wSt) ? `${rows.length} dari ${S.wilayah.length} wilayah` : "";
-    $("tWil").innerHTML = `<thead><tr><th>Wilayah</th><th>Kota</th><th>SPV</th><th>Surveyor</th><th>Status</th><th class="r">Kios</th><th>Catatan</th></tr></thead><tbody>` +
-      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span></td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
-        : `<tr><td colspan="7"><div class="empty">${S.wilayah.length ? "Tidak ada wilayah yang cocok dengan filter." : 'Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).'}</div></td></tr>`) + `</tbody>`;
+    $("fVFrom").onchange = (e) => { filters.vFrom = e.target.value; renderInternal(); };
+    $("fVTo").onchange = (e) => { filters.vTo = e.target.value; renderInternal(); };
+    if ($("fWReset")) $("fWReset").onclick = () => { filters.wSur = ""; filters.wSt = ""; filters.vFrom = ""; filters.vTo = ""; renderInternal(); };
+    const rows = S.wilayah.filter((w) => (!filters.wSur || (filters.wSur === "__none" ? !w.surveyorId : w.surveyorId === filters.wSur)) && (!filters.wSt || w.status === filters.wSt)
+      && (!filters.vFrom || (w.visitDate && w.visitDate >= filters.vFrom)) && (!filters.vTo || (w.visitDate && w.visitDate <= filters.vTo)))
+      .sort((a, b) => (filters.vFrom || filters.vTo) ? (b.visitDate || "").localeCompare(a.visitDate || "") : a.nama.localeCompare(b.nama));
+    $("fWCount").textContent = (filters.wSur || filters.wSt || filters.vFrom || filters.vTo) ? `${rows.length} dari ${S.wilayah.length} wilayah` : "";
+    $("tWil").innerHTML = `<thead><tr><th>Wilayah</th><th>Kota</th><th>SPV</th><th>Surveyor</th><th>Status</th><th>Visit</th><th class="r">Kios</th><th>Catatan</th></tr></thead><tbody>` +
+      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span></td><td data-l="Visit">${w.visitDate ? fmtD(w.visitDate) : '<span class="note">–</span>'}${(w.photos || []).length ? ` <span class="badge m">${w.photos.length} foto</span>` : (w.status !== "dibagi" && w.status !== "alternatif" ? ' <span class="badge w">tanpa foto</span>' : "")}</td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
+        : `<tr><td colspan="8"><div class="empty">${S.wilayah.length ? "Tidak ada wilayah yang cocok dengan filter." : 'Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).'}</div></td></tr>`) + `</tbody>`;
     $("tWil").querySelectorAll("tr[data-w]").forEach((tr) => (tr.onclick = () => openWil(tr.dataset.w)));
     renderPipeline();
     if (me.isAdmin) renderPanel();
@@ -321,10 +328,14 @@
         <div><label>Surveyor</label><select id="wSur" ${ro ? "disabled" : ""}><option value="">–</option>${people("Surveyor")}</select></div>
         <div><label>Target jumlah kios</label><input id="wTarget" type="number" min="1" value="${d.targetKios || 1}" ${ro ? "disabled" : ""}></div>
         <div><label>Target bulan</label><input id="wBulan" type="month" value="${esc(d.targetBulan || "")}" ${ro ? "disabled" : ""}></div>
-        <div><label>Tanggal visit</label><input id="wVisit" type="date" value="${esc(d.visitDate || "")}" ${ro ? "disabled" : ""}></div>
+        <div><label>Tanggal visit <span class="note">(wajib bila sudah visit)</span></label><input id="wVisit" type="date" value="${esc(d.visitDate || "")}" ${ro ? "disabled" : ""}></div>
         <div class="full"><label>Catatan visit</label><textarea id="wVNote" ${ro ? "disabled" : ""}>${esc(d.visitNotes || "")}</textarea></div>
         <div class="full"><label>Catatan</label><textarea id="wNote" ${ro ? "disabled" : ""}>${esc(d.catatan || "")}</textarea></div>
       </div>
+      <div style="margin-top:12px"><b>Foto visit</b> <span class="note">— wajib minimal 1 foto sebelum status "Sudah visit"; foto lokasi, lalu lintas, kandidat kios</span>
+        <div class="row" style="margin-top:6px" id="wPhotos">${(d.photos || []).map((p) => `<span class="ph"><a href="${esc(p.url)}" target="_blank"><img src="${esc(p.url)}" alt="${esc(p.name || "foto")}"></a>${!ro ? `<button class="phx" data-f="${p.id}" title="Hapus foto">×</button>` : ""}</span>`).join("")}
+        ${!ro ? `<label class="pill" style="cursor:pointer">+ foto<input type="file" id="wFile" accept="image/*" capture="environment" multiple class="hide"></label>` : ""}</div>
+        <div class="note" id="wPending"></div></div>
       <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}${w && !ro && w.status !== "alternatif" ? `<button class="btn o" id="bAlt">Ganti wilayah alternatif</button>` : ""}<div class="sp"></div>${w && me.isAdmin ? `<button class="btn g s" id="bDel">Delete</button>` : ""}</div>
       <div id="altBox" class="hide card" style="margin-top:10px"><div class="f"><div><label>Nama wilayah alternatif</label><input id="aNama"></div><div><label>Kota</label><input id="aKota"></div><div class="full"><label>Alasan</label><input id="aNote"></div></div><div class="row" style="margin-top:8px"><button class="btn s" id="aGo">Buat wilayah alternatif</button></div></div>
       ${w ? `<div style="margin-top:14px"><b>Kios di wilayah ini</b>${S.kios.filter((k) => k.wilayahId === w.id).map(card).join("") || '<div class="note">Belum ada kandidat kios</div>'}</div>` : ""}`);
@@ -332,7 +343,27 @@
     $("dr").querySelectorAll(".kios[data-k]").forEach((c) => (c.onclick = () => openKios(c.dataset.k)));
     const body = () => ({ nama: $("wNama").value.trim(), kota: $("wKota").value.trim(), cluster: $("wCl").value, status: $("wStatus").value, spvId: $("wSpv").value, surveyorId: $("wSur").value, targetKios: +$("wTarget").value || 1, targetBulan: $("wBulan").value, visitDate: $("wVisit").value, visitNotes: $("wVNote").value.trim(), catatan: $("wNote").value.trim() });
     const run = async (fn, ok) => { try { await fn(); toast(ok || "Tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } };
-    if ($("bSave")) $("bSave").onclick = () => run(async () => { const b = body(); if (!b.nama) throw new Error("Nama wilayah wajib diisi"); await (w ? api(`/api/wilayah/${w.id}`, { method: "PUT", body: b }) : api("/api/wilayah", { method: "POST", body: b })); closeDr(); });
+    let pending = [];
+    const uploadTo = async (wid, files) => { for (const f of files) { const fd = new FormData(); fd.append("file", f); await api(`/api/wilayah/${wid}/files`, { method: "POST", body: fd }); } };
+    if ($("wFile")) $("wFile").onchange = () => {
+      const files = Array.from($("wFile").files || []); if (!files.length) return;
+      if (w) run(async () => { await uploadTo(w.id, files); const fresh = await api("/api/state"); S = fresh; me = S.me; openWil(w.id); }, `${files.length} foto ter-upload`);
+      else { pending = pending.concat(files); $("wPending").textContent = `${pending.length} foto akan di-upload saat Simpan`; }
+    };
+    $("dr").querySelectorAll(".phx").forEach((b) => (b.onclick = () => run(async () => { await api(`/api/wilayah/${w.id}/files/${b.dataset.f}`, { method: "DELETE" }); const fresh = await api("/api/state"); S = fresh; me = S.me; openWil(w.id); }, "Foto dihapus")));
+    if ($("bSave")) $("bSave").onclick = () => run(async () => {
+      const b = body(); if (!b.nama) throw new Error("Nama wilayah wajib diisi");
+      const needPhoto = ["visit", "cari", "selesai"].includes(b.status);
+      if (w) { await api(`/api/wilayah/${w.id}`, { method: "PUT", body: b }); }
+      else {
+        if (needPhoto && !pending.length) throw new Error("Lampirkan minimal 1 foto visit untuk status ini");
+        if (needPhoto && !b.visitDate) throw new Error("Isi tanggal visit untuk status ini");
+        const created = await api("/api/wilayah", { method: "POST", body: { ...b, status: "dibagi" } });
+        if (pending.length) await uploadTo(created.id, pending);
+        if (b.status !== "dibagi") await api(`/api/wilayah/${created.id}`, { method: "PUT", body: b });
+      }
+      closeDr();
+    });
     if ($("bAlt")) $("bAlt").onclick = () => $("altBox").classList.toggle("hide");
     if ($("aGo")) $("aGo").onclick = () => run(async () => { await api(`/api/wilayah/${w.id}/alternatif`, { method: "POST", body: { namaAlternatif: $("aNama").value, kota: $("aKota").value, catatan: $("aNote").value } }); closeDr(); }, "Wilayah alternatif dibuat");
     if ($("bDel")) $("bDel").onclick = () => confirmTwice("Delete wilayah ini? Tekan Delete lagi untuk konfirmasi.", () => run(async () => { await api(`/api/wilayah/${w.id}`, { method: "DELETE" }); closeDr(); }, "Terhapus"));

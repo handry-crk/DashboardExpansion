@@ -135,3 +135,6 @@ body.lock{overflow:hidden}
   h2{font-size:18px}.kpi .n{font-size:22px}
   @page{size:A4;margin:14mm}
 }
+
+.ph{position:relative;display:inline-block}.ph img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+.phx{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:var(--ink);color:var(--cream);font-size:12px;line-height:20px;padding:0;cursor:pointer}

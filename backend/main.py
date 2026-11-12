@@ -304,6 +304,8 @@ async def create_wilayah(body: WilayahIn, ctx: Ctx = Depends(require_login)):
         err(403, "Role Anda tidak dapat menambah wilayah")
     if any(x["nama"].strip().lower() == body.nama.strip().lower() for x in await db.find("wilayah")):
         err(400, "Nama wilayah sudah ada. Buka wilayah tersebut atau pakai nama lain.")
+    if body.status in ("visit", "cari", "selesai"):
+        err(400, "Wilayah baru disimpan sebagai 'Dibagi' dulu; upload foto visit lalu ubah statusnya")
     w = {"id": nid(), **body.model_dump(), "photos": [], "createdAt": iso(), "updatedAt": iso(), "updatedBy": ctx.member["id"]}
     await db.put("wilayah", w)
     return w
@@ -316,6 +318,13 @@ async def update_wilayah(wid: str, body: WilayahIn, ctx: Ctx = Depends(require_l
     w = await db.get("wilayah", wid)
     if not w:
         err(404, "Wilayah tidak ditemukan")
+    if body.status in ("visit", "cari", "selesai"):
+        if not (w.get("photos") or []):
+            err(400, "Lampirkan minimal 1 foto visit sebelum status diubah ke 'Sudah visit' atau setelahnya")
+        if not body.visitDate:
+            err(400, "Isi tanggal visit sebelum status diubah ke 'Sudah visit' atau setelahnya")
+    if any(x["nama"].strip().lower() == body.nama.strip().lower() and x["id"] != wid for x in await db.find("wilayah")):
+        err(400, "Nama wilayah sudah dipakai wilayah lain")
     w.update(body.model_dump())
     w["updatedAt"] = iso()
     w["updatedBy"] = ctx.member["id"]
@@ -591,6 +600,60 @@ async def timeline(kid: str, ctx: Ctx = Depends(require_login)):
 
 
 # ---------------------------------------------------------------- files
+async def _store_file(owner_col: str, owner_id: str, file: UploadFile, kind: str, by: str) -> Dict:
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        err(400, "Ukuran file maksimal 10 MB")
+    if kind == "photo" and not (file.content_type or "").startswith("image/"):
+        err(400, "File foto harus berupa gambar (JPG/PNG/HEIC)")
+    os.makedirs(C.UPLOAD_DIR, exist_ok=True)
+    fid = nid()
+    ext = os.path.splitext(file.filename or "")[1].lower()[:8]
+    path = os.path.join(C.UPLOAD_DIR, fid + ext)
+    with open(path, "wb") as f:
+        f.write(data)
+    meta = {"id": fid, "kiosId": owner_id if owner_col == "kios" else "", "wilayahId": owner_id if owner_col == "wilayah" else "", "name": file.filename, "path": path, "kind": kind, "size": len(data), "at": iso(), "byId": by}
+    await db.put("files", meta)
+    return meta
+
+
+@app.post("/api/wilayah/{wid}/files")
+async def upload_wilayah_file(wid: str, file: UploadFile = File(...), ctx: Ctx = Depends(require_login)):
+    if not can_edit(ctx):
+        err(403, "Role Anda tidak dapat upload file")
+    w = await db.get("wilayah", wid)
+    if not w:
+        err(404, "Wilayah tidak ditemukan")
+    meta = await _store_file("wilayah", wid, file, "photo", ctx.member["id"])
+    url = f"/api/files/{meta['id']}"
+    photos = (w.get("photos") or []) + [{"id": meta["id"], "url": url, "name": file.filename, "at": meta["at"], "byId": ctx.member["id"]}]
+    await db.update("wilayah", wid, {"photos": photos, "updatedAt": iso(), "updatedBy": ctx.member["id"]})
+    return {"id": meta["id"], "url": url, "name": file.filename}
+
+
+@app.delete("/api/wilayah/{wid}/files/{fid}")
+async def delete_wilayah_file(wid: str, fid: str, ctx: Ctx = Depends(require_login)):
+    if not can_edit(ctx):
+        err(403, "Role Anda tidak dapat menghapus file")
+    w = await db.get("wilayah", wid)
+    if not w:
+        err(404, "Wilayah tidak ditemukan")
+    photos = [p for p in (w.get("photos") or []) if p.get("id") != fid]
+    if len(photos) == len(w.get("photos") or []):
+        err(404, "Foto tidak ditemukan")
+    if not photos and w.get("status") in ("visit", "cari", "selesai"):
+        err(400, "Wilayah berstatus visit/pencarian/selesai harus memiliki minimal 1 foto")
+    m = await db.get("files", fid)
+    if m:
+        try:
+            os.remove(m["path"])
+        except Exception:
+            pass
+        await db.delete("files", fid)
+    await db.update("wilayah", wid, {"photos": photos, "updatedAt": iso(), "updatedBy": ctx.member["id"]})
+    return {"ok": True}
+
+
 @app.post("/api/kios/{kid}/files")
 async def upload_file(kid: str, kind: str = Query("photo"), file: UploadFile = File(...), ctx: Ctx = Depends(require_login)):
     if not can_edit(ctx):

@@ -285,3 +285,27 @@ async def test_direksi_report(cl):
     for forbidden in ("sewaTahun", "dp", "pemilikHp"):
         assert forbidden not in k
     assert (await cl.get("/direksi")).status_code == 200
+
+
+async def test_wilayah_photo_required(cl):
+    r = await cl.post("/api/wilayah", json={"nama": "Cimahi Tengah", "kota": "Cimahi", "cluster": "Bandung Raya", "status": "visit", "visitDate": "2026-11-12"}, headers=H("rani"))
+    assert r.status_code == 400
+    r = await cl.post("/api/wilayah", json={"nama": "Cimahi Tengah", "kota": "Cimahi", "cluster": "Bandung Raya"}, headers=H("rani"))
+    assert r.status_code == 200
+    wid = r.json()["id"]
+    base = {"nama": "Cimahi Tengah", "kota": "Cimahi", "cluster": "Bandung Raya", "status": "visit", "visitDate": "2026-11-12"}
+    r = await cl.put(f"/api/wilayah/{wid}", json=base, headers=H("rani"))
+    assert r.status_code == 400 and "foto" in r.json()["detail"].lower()
+    r = await cl.post(f"/api/wilayah/{wid}/files", files={"file": ("x.txt", b"bukan gambar", "text/plain")}, headers=H("rani"))
+    assert r.status_code == 400
+    r = await cl.post(f"/api/wilayah/{wid}/files", files={"file": ("visit.jpg", b"\xff\xd8\xff\xe0fake", "image/jpeg")}, headers=H("rani"))
+    assert r.status_code == 200
+    fid = r.json()["id"]
+    r = await cl.put(f"/api/wilayah/{wid}", json={**base, "visitDate": ""}, headers=H("rani"))
+    assert r.status_code == 400 and "tanggal" in r.json()["detail"].lower()
+    r = await cl.put(f"/api/wilayah/{wid}", json=base, headers=H("rani"))
+    assert r.status_code == 200 and r.json()["status"] == "visit" and len(r.json()["photos"]) == 1
+    # foto terakhir tidak boleh dihapus saat status visit
+    r = await cl.delete(f"/api/wilayah/{wid}/files/{fid}", headers=H("rani"))
+    assert r.status_code == 400
+    assert (await cl.get(f"/api/files/{fid}")).status_code == 200
