@@ -162,24 +162,24 @@
   const statusKey = (k) => k.statusKey;
   function kpi(n, l, d) { return `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div><div class="d">${d || ""}</div></div>`; }
   function stPill(k) { return `<span class="st ${k.statusKey}"><i></i>${esc(k.statusLabel)}</span>`; }
-  function flags(k) { let h = ""; if (k.lewatSla) h += ` <span class="badge">SLA +${k.daysInStage - k.sla}h</span>`; else if (k.stalled) h += ` <span class="badge w">tanpa update ${k.daysInStage}h</span>`; if (k.lewatTarget) h += ` <span class="badge m">lewat target</span>`; return h; }
+  function flags(k) { let h = ""; if (k.tindak && k.tindak !== "followup") h += ` <span class="badge ${k.tindak === "hold" ? "w" : "m"}">${k.tindakLabel || k.tindak}</span>`; if (k.lewatSla) h += ` <span class="badge">SLA +${k.daysInStage - k.sla}h</span>`; else if (k.stalled) h += ` <span class="badge w">tanpa update ${k.daysInStage}h</span>`; if (k.lewatTarget) h += ` <span class="badge m">lewat target</span>`; return h; }
 
   // ------------------------------------------------------------ internal view
   function renderInternal() {
     const v = $("vInt");
-    const act = S.kios.filter((k) => k.status !== "alternatif");
+    const act = S.kios.filter((k) => k.status !== "alternatif" && k.tindak !== "skip");
     const inProc = act.filter((k) => k.stage >= 2 && k.stage < 14);
-    const mine = act.filter((k) => k.stage < 14 && (stageOf(k.stage).roles.includes(me.role) || (me.role === "SPV" && k.stage === 1))).sort((a, b) => b.daysInStage - a.daysInStage);
+    const mine = act.filter((k) => k.stage < 14 && k.tindak === "followup" && (stageOf(k.stage).roles.includes(me.role) || (me.role === "SPV" && k.stage === 1))).sort((a, b) => b.daysInStage - a.daysInStage);
     const wilNames = S.wilayah.map((w) => w.nama);
     const picRoles = ["SPV", "Surveyor", "SDO", "Legal", "Finance"];
     const roleLabel = S.roleLabel || {};
     v.innerHTML = `
     <section><h2><b>Ringkasan</b> Pipeline</h2><div class="sub">Angka otomatis dari data wilayah & kios</div>
       <div class="grid kpis">
-        ${kpi(S.wilayah.filter((w) => !["selesai", "alternatif"].includes(w.status)).length, "Wilayah aktif", "dibagi / visit / pencarian")}
+        ${kpi(S.wilayah.filter((w) => !["selesai", "alternatif"].includes(w.status) && w.tindak === "followup").length, "Wilayah aktif", `dibagi / visit / pencarian · ${S.wilayah.filter((w) => w.tindak === "hold").length} hold · ${S.wilayah.filter((w) => w.tindak === "skip").length} skip`)}
         ${kpi(act.filter((k) => k.stage === 0).length, "Kandidat kios", "hasil pencarian surveyor")}
         ${kpi(act.filter((k) => k.stage === 1).length, "Menunggu approval", "PIC: SPV")}
-        ${kpi(inProc.length, "Kios dalam proses", `${inProc.filter((k) => k.lewatSla).length} lewat SLA · ${inProc.filter((k) => k.lewatTarget).length} lewat target`)}
+        ${kpi(inProc.length, "Kios dalam proses", `${inProc.filter((k) => k.lewatSla).length} lewat SLA · ${inProc.filter((k) => k.tindak === "hold").length} hold`)}
         ${kpi(inProc.filter((k) => k.status === "blocked").length, "Blocked", "butuh eskalasi")}
         ${kpi(act.filter((k) => k.stage === 14).length, "Beroperasi", "sudah serah terima operasional")}
       </div></section>
@@ -187,7 +187,7 @@
     <section><div class="row"><div><h2><b>Wilayah</b> & Pencarian</h2><div class="sub">Pembagian Wilayah → Visit → Pencarian Kios → Approval</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bWil">+ Wilayah</button>` : ""}</div>
       <div class="row" style="margin-bottom:10px">
         <select id="fWSur" class="inl"><option value="">Semua surveyor</option>${S.members.filter((m) => m.role === "Surveyor" || S.wilayah.some((w) => w.surveyorId === m.id)).sort((a, b) => a.name.localeCompare(b.name)).map((m) => `<option value="${m.id}" ${m.id === filters.wSur ? "selected" : ""}>${esc(m.name)}</option>`).join("")}<option value="__none" ${filters.wSur === "__none" ? "selected" : ""}>Belum ada surveyor</option></select>
-        <select id="fWSt" class="inl"><option value="">Semua status</option>${["dibagi", "visit", "cari", "alternatif", "selesai"].map((x) => `<option value="${x}" ${x === filters.wSt ? "selected" : ""}>${S.wilStatusLabel[x]}</option>`).join("")}</select>
+        <select id="fWSt" class="inl"><option value="">Semua status</option>${["dibagi", "visit", "cari", "alternatif", "selesai"].map((x) => `<option value="${x}" ${x === filters.wSt ? "selected" : ""}>${S.wilStatusLabel[x]}</option>`).join("")}<option disabled>── tindak lanjut ──</option>${["followup", "hold", "skip"].map((x) => `<option value="t:${x}" ${"t:" + x === filters.wSt ? "selected" : ""}>${S.tindakLabel[x]}</option>`).join("")}</select>
         <label style="display:flex;align-items:center;gap:4px;margin:0"><span class="note">Visit</span><input id="fVFrom" type="date" class="inl" style="width:150px" value="${filters.vFrom}"><span class="note">–</span><input id="fVTo" type="date" class="inl" style="width:150px" value="${filters.vTo}"></label>
         ${me.role === "Surveyor" ? `<label class="chip ${filters.wSur === me.id ? "on" : ""}" id="fWMine" style="margin:0">Wilayah saya</label>` : ""}
         ${(filters.wSur || filters.wSt || filters.vFrom || filters.vTo) ? `<button class="btn g s" id="fWReset">Reset filter</button>` : ""}
@@ -196,7 +196,7 @@
     <section><div class="row"><div><h2><b>Pipeline</b> Kios</h2><div class="sub">Klik kartu untuk update stage, status, dan catatan</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bKios">+ Kios</button>` : ""}</div>
       <div class="row" style="margin-bottom:10px">
         <select id="fWil" class="inl"><option value="">Semua wilayah</option>${wilNames.map((w) => `<option ${w === filters.wil ? "selected" : ""}>${esc(w)}</option>`).join("")}</select>
-        <select id="fSt" class="inl"><option value="">Semua status</option>${["ontrack", "perhatian", "blocked", "alternatif", "selesai"].map((s) => `<option value="${s}" ${s === filters.st ? "selected" : ""}>${S.statusLabel[s]}</option>`).join("")}</select>
+        <select id="fSt" class="inl"><option value="">Semua status</option>${["ontrack", "perhatian", "blocked", "hold", "skip", "alternatif", "selesai"].map((s) => `<option value="${s}" ${s === filters.st ? "selected" : ""}>${S.statusLabel[s]}</option>`).join("")}</select>
         <select id="fPic" class="inl"><option value="">Semua PIC</option>${picRoles.map((r) => `<option ${r === filters.pic ? "selected" : ""}>${r}</option>`).join("")}</select>
         <label class="chip ${filters.mine ? "on" : ""}" id="fMine" style="margin:0">Hanya tugas saya</label>
       </div>
@@ -216,12 +216,12 @@
     $("fVFrom").onchange = (e) => { filters.vFrom = e.target.value; renderInternal(); };
     $("fVTo").onchange = (e) => { filters.vTo = e.target.value; renderInternal(); };
     if ($("fWReset")) $("fWReset").onclick = () => { filters.wSur = ""; filters.wSt = ""; filters.vFrom = ""; filters.vTo = ""; renderInternal(); };
-    const rows = S.wilayah.filter((w) => (!filters.wSur || (filters.wSur === "__none" ? !w.surveyorId : w.surveyorId === filters.wSur)) && (!filters.wSt || w.status === filters.wSt)
+    const rows = S.wilayah.filter((w) => (!filters.wSur || (filters.wSur === "__none" ? !w.surveyorId : w.surveyorId === filters.wSur)) && (!filters.wSt || (filters.wSt.startsWith("t:") ? w.tindak === filters.wSt.slice(2) : w.status === filters.wSt))
       && (!filters.vFrom || (w.visitDate && w.visitDate >= filters.vFrom)) && (!filters.vTo || (w.visitDate && w.visitDate <= filters.vTo)))
       .sort((a, b) => (filters.vFrom || filters.vTo) ? (b.visitDate || "").localeCompare(a.visitDate || "") : a.nama.localeCompare(b.nama));
     $("fWCount").textContent = (filters.wSur || filters.wSt || filters.vFrom || filters.vTo) ? `${rows.length} dari ${S.wilayah.length} wilayah` : "";
     $("tWil").innerHTML = `<thead><tr><th>Wilayah</th><th>Kota</th><th>SPV</th><th>Surveyor</th><th>Status</th><th>Visit</th><th class="r">Kios</th><th>Catatan</th></tr></thead><tbody>` +
-      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span></td><td data-l="Visit">${w.visitDate ? fmtD(w.visitDate) : '<span class="note">–</span>'}${(w.photos || []).length ? ` <span class="badge m">${w.photos.length} foto</span>` : (w.status !== "dibagi" && w.status !== "alternatif" ? ' <span class="badge w">tanpa foto</span>' : "")}</td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
+      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span>${w.tindak !== "followup" ? ` <span class="badge ${w.tindak === "hold" ? "w" : "m"}">${S.tindakLabel[w.tindak]}</span>` : ""}</td><td data-l="Visit">${w.visitDate ? fmtD(w.visitDate) : '<span class="note">–</span>'}${(w.photos || []).length ? ` <span class="badge m">${w.photos.length} foto</span>` : (w.status !== "dibagi" && w.status !== "alternatif" ? ' <span class="badge w">tanpa foto</span>' : "")}</td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
         : `<tr><td colspan="8"><div class="empty">${S.wilayah.length ? "Tidak ada wilayah yang cocok dengan filter." : 'Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).'}</div></td></tr>`) + `</tbody>`;
     $("tWil").querySelectorAll("tr[data-w]").forEach((tr) => (tr.onclick = () => openWil(tr.dataset.w)));
     renderPipeline();
@@ -255,17 +255,18 @@
     const d = k || { stage: 0, status: "ontrack", targetBuka: "", wilayahId: filters.wil ? (S.wilayah.find((w) => w.nama === filters.wil) || {}).id : "" };
     const st = stageOf(d.stage);
     const ro = !canEdit();
-    const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
+    const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && k.tindak === "followup" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
     const mayBack = k && k.stage > 0 && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     showDr(`<div class="row"><h3>${k ? esc(k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
       <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
       ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Next stage:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
         <div class="row" style="margin-top:8px"><input id="sNote" class="inl" style="flex:1;min-width:160px" placeholder="Catatan update — wajib untuk Blocked / Perlu Perhatian / kembali / alternatif">
-        ${mayAdvance ? `<button class="btn s" id="bNext">Next stage →</button>` : `<span class="note">Hanya ${esc(st.pic)} / SPV yang dapat memajukan stage</span>`}
+        ${mayAdvance ? `<button class="btn s" id="bNext">Next stage →</button>` : `<span class="note">${k.tindak !== "followup" ? `Kios sedang ${esc(k.tindakLabel)} — set Follow up untuk melanjutkan` : `Hanya ${esc(st.pic)} / SPV yang dapat memajukan stage`}</span>`}
         ${mayBack ? `<button class="btn o s" id="bBack">← Kembali</button>` : ""}</div>
         <div class="row" style="margin-top:8px"><select id="sStatus" class="inl"><option value="ontrack" ${k.status === "ontrack" ? "selected" : ""}>On Track</option><option value="perhatian" ${k.status === "perhatian" ? "selected" : ""}>Perlu Perhatian</option><option value="blocked" ${k.status === "blocked" ? "selected" : ""}>Blocked</option></select>
-        ${!ro && k.status !== "alternatif" ? `<button class="btn o s" id="bStatus">Update status</button>` : ""}${k.status === "alternatif" ? `<button class="btn o s" id="bReopen">Reopen</button>` : (!ro ? `<button class="btn g s" id="bAlt">Jadikan alternatif</button>` : "")}</div></div>` : ""}
+        ${!ro && k.status !== "alternatif" ? `<button class="btn o s" id="bStatus">Update status</button>` : ""}${k.status === "alternatif" ? `<button class="btn o s" id="bReopen">Reopen</button>` : (!ro ? `<button class="btn g s" id="bAlt">Jadikan alternatif</button>` : "")}</div>
+        <div class="row" style="margin-top:8px"><span class="note" style="min-width:90px">Tindak lanjut</span><select id="sTindak" class="inl"><option value="followup" ${k.tindak === "followup" ? "selected" : ""}>Follow up</option><option value="hold" ${k.tindak === "hold" ? "selected" : ""}>Hold</option><option value="skip" ${k.tindak === "skip" ? "selected" : ""}>Skip</option></select>${!ro ? `<button class="btn o s" id="bTindak">Set</button>` : ""}${k.tindak !== "followup" ? `<span class="note">${esc(k.tindakLabel)} sejak ${fmtD(k.tindakAt)}${k.tindakNote ? " — " + esc(k.tindakNote) : ""}</span>` : ""}</div></div>` : ""}
       <div class="f">
         <div class="full"><label>Nama / lokasi kios</label><input id="kNama" value="${esc(d.nama || "")}" ${ro ? "disabled" : ""}></div>
         <div><label>Wilayah</label><select id="kWil" ${ro ? "disabled" : ""}><option value="">– pilih –</option>${S.wilayah.map((w) => `<option value="${w.id}" ${w.id === d.wilayahId ? "selected" : ""}>${esc(w.nama)}</option>`).join("")}</select></div>
@@ -295,6 +296,7 @@
     if ($("bSave")) $("bSave").onclick = () => run(async () => { await save(); closeDr(); });
     if ($("bNext")) $("bNext").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage + 1, note: $("sNote").value } }); closeDr(); }, "Stage dimajukan");
     if ($("bBack")) $("bBack").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage - 1, note: $("sNote").value } }); closeDr(); }, "Stage dikembalikan");
+    if ($("bTindak")) $("bTindak").onclick = () => run(async () => { await api(`/api/kios/${k.id}/tindak`, { method: "POST", body: { tindak: $("sTindak").value, note: $("sNote").value } }); closeDr(); }, "Tindak lanjut ter-update");
     if ($("bStatus")) $("bStatus").onclick = () => run(async () => { await api(`/api/kios/${k.id}/status`, { method: "POST", body: { status: $("sStatus").value, note: $("sNote").value } }); closeDr(); }, "Status ter-update");
     if ($("bAlt")) $("bAlt").onclick = () => run(async () => { const n = $("sNote").value; if (!n.trim()) throw new Error("Isi catatan alasan di kolom catatan dulu"); await api(`/api/kios/${k.id}/alternatif`, { method: "POST", body: { note: n } }); closeDr(); }, "Kios dijadikan alternatif");
     if ($("bReopen")) $("bReopen").onclick = () => run(async () => { await api(`/api/kios/${k.id}/alternatif`, { method: "POST", body: { note: "Dibuka kembali" } }); closeDr(); }, "Kios di-reopen");
@@ -332,6 +334,7 @@
         <div class="full"><label>Catatan visit</label><textarea id="wVNote" ${ro ? "disabled" : ""}>${esc(d.visitNotes || "")}</textarea></div>
         <div class="full"><label>Catatan</label><textarea id="wNote" ${ro ? "disabled" : ""}>${esc(d.catatan || "")}</textarea></div>
       </div>
+      ${w ? `<div class="card" style="padding:10px;margin-top:12px"><div class="row"><span class="note" style="min-width:90px">Tindak lanjut</span><select id="wTindak" class="inl" ${ro ? "disabled" : ""}><option value="followup" ${w.tindak === "followup" ? "selected" : ""}>Follow up</option><option value="hold" ${w.tindak === "hold" ? "selected" : ""}>Hold</option><option value="skip" ${w.tindak === "skip" ? "selected" : ""}>Skip</option></select><input id="wTNote" class="inl" style="flex:1;min-width:160px" placeholder="Alasan (wajib untuk Hold / Skip)">${!ro ? `<button class="btn o s" id="bWTindak">Set</button>` : ""}</div>${w.tindak !== "followup" ? `<div class="note" style="margin-top:4px">${esc(w.tindakLabel)} sejak ${fmtD(w.tindakAt)}${w.tindakNote ? " — " + esc(w.tindakNote) : ""}</div>` : ""}</div>` : ""}
       <div style="margin-top:12px"><b>Foto visit</b> <span class="note">— wajib minimal 1 foto sebelum status "Sudah visit"; foto lokasi, lalu lintas, kandidat kios</span>
         <div class="row" style="margin-top:6px" id="wPhotos">${(d.photos || []).map((p) => `<span class="ph"><a href="${esc(p.url)}" target="_blank"><img src="${esc(p.url)}" alt="${esc(p.name || "foto")}"></a>${!ro ? `<button class="phx" data-f="${p.id}" title="Hapus foto">×</button>` : ""}</span>`).join("")}
         ${!ro ? `<label class="pill" style="cursor:pointer">+ foto<input type="file" id="wFile" accept="image/*" capture="environment" multiple class="hide"></label>` : ""}</div>
@@ -364,6 +367,7 @@
       }
       closeDr();
     });
+    if ($("bWTindak")) $("bWTindak").onclick = () => run(async () => { await api(`/api/wilayah/${w.id}/tindak`, { method: "POST", body: { tindak: $("wTindak").value, note: $("wTNote").value } }); closeDr(); }, "Tindak lanjut ter-update");
     if ($("bAlt")) $("bAlt").onclick = () => $("altBox").classList.toggle("hide");
     if ($("aGo")) $("aGo").onclick = () => run(async () => { await api(`/api/wilayah/${w.id}/alternatif`, { method: "POST", body: { namaAlternatif: $("aNama").value, kota: $("aKota").value, catatan: $("aNote").value } }); closeDr(); }, "Wilayah alternatif dibuat");
     if ($("bDel")) $("bDel").onclick = () => confirmTwice("Delete wilayah ini? Tekan Delete lagi untuk konfirmasi.", () => run(async () => { await api(`/api/wilayah/${w.id}`, { method: "DELETE" }); closeDr(); }, "Terhapus"));

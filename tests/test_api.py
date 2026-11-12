@@ -309,3 +309,35 @@ async def test_wilayah_photo_required(cl):
     r = await cl.delete(f"/api/wilayah/{wid}/files/{fid}", headers=H("rani"))
     assert r.status_code == 400
     assert (await cl.get(f"/api/files/{fid}")).status_code == 200
+
+
+async def test_tindak_lanjut(cl):
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    k = next(x for x in st["kios"] if x["nama"] == "Kios MERR")  # stage 11 dari import
+    wid = k["wilayahId"]
+    r = await cl.post(f"/api/kios/{k['id']}/tindak", json={"tindak": "hold"}, headers=H("rani"))
+    assert r.status_code == 400
+    r = await cl.post(f"/api/kios/{k['id']}/tindak", json={"tindak": "hold", "note": "vendor menunggu material"}, headers=H("rani"))
+    assert r.status_code == 200 and r.json()["tindak"] == "hold"
+    r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 12}, headers=H("bayu"))
+    assert r.status_code == 400 and "Hold" in r.json()["detail"]
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    e = next(x for x in st["kios"] if x["id"] == k["id"])
+    assert e["statusKey"] == "hold" and e["lewatSla"] is False
+    tok = st["settings"]["shareToken"]
+    rep = (await cl.get(f"/api/report?t={tok}")).json()
+    assert any(x["id"] == k["id"] and x["tindak"] == "hold" for x in rep["kios"])
+    assert "HOLD" in (await cl.get(f"/api/report/weekly-text?t={tok}")).text
+    r = await cl.post(f"/api/kios/{k['id']}/tindak", json={"tindak": "skip", "note": "lokasi dibatalkan pemilik"}, headers=H("dimas"))
+    assert r.status_code == 200
+    rep = (await cl.get(f"/api/report?t={tok}")).json()
+    assert all(x["id"] != k["id"] for x in rep["kios"]) and rep["summary"]["skip"] >= 1
+    r = await cl.post(f"/api/kios/{k['id']}/tindak", json={"tindak": "followup"}, headers=H("dimas"))
+    assert r.status_code == 200 and r.json()["tindak"] == "followup"
+    r = await cl.post(f"/api/kios/{k['id']}/stage", json={"to": 12}, headers=H("bayu"))
+    assert r.status_code == 200
+    # wilayah
+    r = await cl.post(f"/api/wilayah/{wid}/tindak", json={"tindak": "skip"}, headers=H("rani"))
+    assert r.status_code == 400
+    r = await cl.post(f"/api/wilayah/{wid}/tindak", json={"tindak": "hold", "note": "tunggu budget Q1"}, headers=H("rani"))
+    assert r.status_code == 200 and r.json()["tindak"] == "hold" and "Hold" in r.json()["catatan"]

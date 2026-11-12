@@ -414,7 +414,7 @@ async def sync_wilayah_status(wilayah_id: str):
     if not w or w.get("status") == "alternatif":
         return
     ks = await db.find("kios", {"wilayahId": wilayah_id})
-    approved = [k for k in ks if k["stage"] >= 2 and k["status"] != "alternatif"]
+    approved = [k for k in ks if k["stage"] >= 2 and k["status"] != "alternatif" and k.get("tindak", "followup") != "skip"]
     target = w.get("targetKios") or 1
     if len(approved) >= target and w["status"] != "selesai":
         await db.update("wilayah", wilayah_id, {"status": "selesai", "updatedAt": iso()})
@@ -475,6 +475,8 @@ async def change_stage(kid: str, body: StageIn, ctx: Ctx = Depends(require_login
         err(404, "Kios tidak ditemukan")
     if k["status"] == "alternatif":
         err(400, "Kios berstatus alternatif. Reopen dulu.")
+    if k.get("tindak") in ("hold", "skip"):
+        err(400, f"Kios sedang {C.TINDAK_LABEL[k['tindak']]}. Ubah tindak lanjut ke Follow up dulu.")
     cur = k["stage"]
     to = body.to
     if to < 0 or to > C.LAST_STAGE:
@@ -599,6 +601,59 @@ async def timeline(kid: str, ctx: Ctx = Depends(require_login)):
     return items
 
 
+# ---------------------------------------------------------------- tindak lanjut (Follow up / Hold / Skip)
+class TindakIn(BaseModel):
+    tindak: str
+    note: str = ""
+
+    @field_validator("tindak")
+    @classmethod
+    def t_ok(cls, v):
+        if v not in C.TINDAK:
+            raise ValueError("Tindak lanjut harus followup / hold / skip")
+        return v
+
+
+@app.post("/api/kios/{kid}/tindak")
+async def kios_tindak(kid: str, body: TindakIn, ctx: Ctx = Depends(require_login)):
+    if not can_edit(ctx):
+        err(403, "Role Anda tidak dapat mengubah tindak lanjut")
+    k = await db.get("kios", kid)
+    if not k:
+        err(404, "Kios tidak ditemukan")
+    if body.tindak in ("hold", "skip") and not body.note.strip():
+        err(400, "Catatan alasan wajib diisi untuk Hold / Skip")
+    if k["stage"] == C.LAST_STAGE and body.tindak != "followup":
+        err(400, "Kios yang sudah beroperasi tidak bisa di-hold / skip")
+    fields = {"tindak": body.tindak, "tindakNote": body.note.strip(), "tindakAt": iso(), "tindakBy": ctx.member["id"], "updatedAt": iso(), "updatedBy": ctx.member["id"]}
+    if body.tindak == "hold":
+        fields["holdSince"] = iso()
+    if body.tindak == "followup" and k.get("holdSince"):
+        # SLA berhenti selama hold: geser waktu masuk tahap sejauh lama hold
+        fields["holdDays"] = round((k.get("holdDays") or 0) + days_between(k["holdSince"]), 1)
+        fields["holdSince"] = ""
+    await db.update("kios", kid, fields)
+    await add_log(kid, ctx.member["id"], k["stage"], k["stage"], k["status"], k["status"], f"Tindak lanjut → {C.TINDAK_LABEL[body.tindak]}" + (f": {body.note.strip()}" if body.note.strip() else ""))
+    await sync_wilayah_status(k["wilayahId"])
+    return await db.get("kios", kid)
+
+
+@app.post("/api/wilayah/{wid}/tindak")
+async def wilayah_tindak(wid: str, body: TindakIn, ctx: Ctx = Depends(require_login)):
+    if not can_edit(ctx):
+        err(403, "Role Anda tidak dapat mengubah tindak lanjut")
+    w = await db.get("wilayah", wid)
+    if not w:
+        err(404, "Wilayah tidak ditemukan")
+    if body.tindak in ("hold", "skip") and not body.note.strip():
+        err(400, "Catatan alasan wajib diisi untuk Hold / Skip")
+    note = body.note.strip()
+    cat = (w.get("catatan") or "").strip()
+    stamp = f"[{today()}] {C.TINDAK_LABEL[body.tindak]}" + (f": {note}" if note else "")
+    await db.update("wilayah", wid, {"tindak": body.tindak, "tindakNote": note, "tindakAt": iso(), "tindakBy": ctx.member["id"], "catatan": (cat + "\n" + stamp).strip(), "updatedAt": iso(), "updatedBy": ctx.member["id"]})
+    return await db.get("wilayah", wid)
+
+
 # ---------------------------------------------------------------- files
 async def _store_file(owner_col: str, owner_id: str, file: UploadFile, kind: str, by: str) -> Dict:
     data = await file.read()
@@ -701,9 +756,17 @@ def enrich_kios(k: Dict, logs_by_kios: Dict[str, List[Dict]], settings: Dict, me
     days_in = days_between(entered) if entered else 0
     sla = (settings.get("stageSla") or {}).get(str(k["stage"]))
     last = max(logs, key=lambda x: x["at"]) if logs else None
-    status = "selesai" if k["stage"] == C.LAST_STAGE else k["status"]
-    active = k["status"] != "alternatif" and k["stage"] < C.LAST_STAGE
+    tindak = k.get("tindak") or "followup"
+    if tindak == "hold":
+        # hari di tahap tidak termasuk masa hold (hold saat ini + hold sebelumnya)
+        days_in = max(0, days_in - int(k.get("holdDays") or 0) - (days_between(k["holdSince"]) if k.get("holdSince") else 0))
+    elif k.get("holdDays"):
+        days_in = max(0, days_in - int(k.get("holdDays") or 0))
+    status = "selesai" if k["stage"] == C.LAST_STAGE else ("skip" if tindak == "skip" else ("hold" if tindak == "hold" else k["status"]))
+    active = k["status"] != "alternatif" and tindak == "followup" and k["stage"] < C.LAST_STAGE
     out = dict(k)
+    out["tindak"] = tindak
+    out["tindakLabel"] = C.TINDAK_LABEL[tindak]
     out.update({
         "stageName": st["n"], "stagePic": st["pic"], "fase": st["fase"], "statusKey": status,
         "statusLabel": C.STATUS_LABEL.get(status, status),
@@ -738,11 +801,13 @@ async def build_state(ctx: Optional[Ctx] = None) -> Dict:
     for w in wil:
         w["spvName"] = members.get(w.get("spvId"), "")
         w["surveyorName"] = members.get(w.get("surveyorId"), "")
-        w["kiosCount"] = sum(1 for k in ek if k["wilayahId"] == w["id"] and k["status"] != "alternatif")
-        w["approvedCount"] = sum(1 for k in ek if k["wilayahId"] == w["id"] and k["status"] != "alternatif" and k["stage"] >= 2)
+        w["tindak"] = w.get("tindak") or "followup"
+        w["tindakLabel"] = C.TINDAK_LABEL[w["tindak"]]
+        w["kiosCount"] = sum(1 for k in ek if k["wilayahId"] == w["id"] and k["status"] != "alternatif" and k["tindak"] != "skip")
+        w["approvedCount"] = sum(1 for k in ek if k["wilayahId"] == w["id"] and k["status"] != "alternatif" and k["tindak"] != "skip" and k["stage"] >= 2)
     return {"settings": public_settings(settings), "members": [member_public(m) for m in members_raw], "wilayah": wil, "kios": ek,
             "stages": C.STAGES, "fases": C.FASES, "roles": C.ROLES, "roleLabel": C.ROLE_LABEL, "clusters": list(C.CLUSTERS.keys()),
-            "statusLabel": C.STATUS_LABEL, "wilStatusLabel": C.WIL_STATUS_LABEL, "today": today(), "month": this_month(), "serverTime": iso()}
+            "statusLabel": C.STATUS_LABEL, "wilStatusLabel": C.WIL_STATUS_LABEL, "tindakLabel": C.TINDAK_LABEL, "today": today(), "month": this_month(), "serverTime": iso()}
 
 
 @app.get("/api/state")
@@ -756,17 +821,19 @@ async def state(ctx: Ctx = Depends(require_login)):
 
 
 def summary(ek: List[Dict]) -> Dict:
-    act = [k for k in ek if k["status"] != "alternatif"]
+    act = [k for k in ek if k["status"] != "alternatif" and k.get("tindak", "followup") != "skip"]
     approved = [k for k in act if k["stage"] >= 2]
     in_proc = [k for k in approved if k["stage"] < C.LAST_STAGE]
     open_ = [k for k in act if k["stage"] == C.LAST_STAGE]
-    blocked = [k for k in in_proc if k["status"] == "blocked"]
+    blocked = [k for k in in_proc if k["status"] == "blocked" and k.get("tindak", "followup") == "followup"]
+    hold = [k for k in in_proc if k.get("tindak") == "hold"]
     m = this_month()
     return {
+        "hold": len(hold), "skip": sum(1 for k in ek if k.get("tindak") == "skip"),
         "beroperasi": len(open_), "dalamProses": len(in_proc), "kontrak": sum(1 for k in in_proc if k["fase"] == "Kontrak"),
         "renovasi": sum(1 for k in in_proc if k["fase"] == "Renovasi"), "serahTerima": sum(1 for k in in_proc if k["fase"] == "Serah Terima"),
         "targetBulanIni": sum(1 for k in in_proc if k.get("targetBuka") == m), "blocked": len(blocked),
-        "perhatian": sum(1 for k in in_proc if k["status"] == "perhatian"), "lewatSla": sum(1 for k in in_proc if k["lewatSla"]),
+        "perhatian": sum(1 for k in in_proc if k["status"] == "perhatian" and k.get("tindak", "followup") == "followup"), "lewatSla": sum(1 for k in in_proc if k["lewatSla"]),
         "lewatTarget": sum(1 for k in in_proc if k["lewatTarget"]), "bukaBulanIni": sum(1 for k in open_ if (k.get("openedAt") or "")[:7] == m),
         "wilayahAktif": None, "kandidat": sum(1 for k in act if k["stage"] == 0), "menungguApproval": sum(1 for k in act if k["stage"] == 1),
         "byStage": {str(i): sum(1 for k in approved if k["stage"] == i) for i in range(2, C.LAST_STAGE + 1)},
@@ -791,7 +858,7 @@ def headline(sm: Dict) -> str:
 def report_kios(k: Dict) -> Dict:
     """Payload kios untuk All Divisi — tanpa data internal (sewa, DP, pemilik, komentar)."""
     keys = ["id", "kode", "nama", "wilayahNama", "cluster", "alamat", "stage", "stageName", "stagePic", "fase", "statusKey", "statusLabel",
-            "nextStage", "nextPic", "targetBuka", "daysInStage", "sla", "lewatSla", "stalled", "lewatTarget", "lastNote", "lastAt", "openedAt", "vendorNama", "renovasiPct"]
+            "nextStage", "nextPic", "targetBuka", "daysInStage", "sla", "lewatSla", "stalled", "lewatTarget", "lastNote", "lastAt", "openedAt", "vendorNama", "renovasiPct", "tindak", "tindakLabel", "tindakNote"]
     return {x: k.get(x) for x in keys}
 
 
@@ -808,7 +875,12 @@ def weekly_text(ek: List[Dict], sm: Dict) -> str:
         for k in sorted(l, key=lambda x: -x["stage"]):
             extra = "" if k["status"] == "ontrack" else f" — {k['statusLabel']}"
             lines.append(f"• {k['nama']} ({k['wilayahNama']}) — {k['stageName']}, PIC {k['stagePic']}{extra}")
-    blocked = [k for k in in_proc if k["status"] == "blocked"]
+    hold = [k for k in in_proc if k.get("tindak") == "hold"]
+    if hold:
+        lines += ["", "HOLD"]
+        for k in hold:
+            lines.append(f"• {k['nama']} ({k['wilayahNama']}) — {k['stageName']}: {k.get('tindakNote') or '-'}")
+    blocked = [k for k in in_proc if k["status"] == "blocked" and k.get("tindak", "followup") == "followup"]
     if blocked:
         lines += ["", "BUTUH DUKUNGAN"]
         for k in blocked:
@@ -827,7 +899,7 @@ async def report(t: str = Query(""), ctx: Ctx = Depends(ctx_from_header)):
         err(404, "Link laporan tidak valid")
     st = await build_state()
     sm = summary(st["kios"])
-    approved = [report_kios(k) for k in st["kios"] if k["status"] != "alternatif" and k["stage"] >= 2]
+    approved = [report_kios(k) for k in st["kios"] if k["status"] != "alternatif" and k.get("tindak", "followup") != "skip" and k["stage"] >= 2]
     return {"appName": s["appName"], "summary": sm, "headline": headline(sm), "kios": approved,
             "stages": [{"i": x["i"], "n": x["n"], "pic": x["pic"], "fase": x["fase"], "sla": (s.get("stageSla") or {}).get(str(x["i"]))} for x in C.STAGES if not x.get("internal")],
             "slaGroups": [{"nama": g[0], "stages": g[1], "hari": g[2]} for g in C.SLA_GROUPS],
@@ -883,7 +955,7 @@ async def build_direksi() -> Dict:
             planned[k["targetBuka"]] = planned.get(k["targetBuka"], 0) + 1
     monthly = [{"month": m, "label": fmt_month(m), "actual": opened.get(m, 0) if m <= cur else None, "target": tgt.get(m, 0), "planned": planned.get(m, 0), "isCurrent": m == cur} for m in months]
     # 2) pipeline per fase (approved, aktif)
-    act = [k for k in ek if k["status"] != "alternatif"]
+    act = [k for k in ek if k["status"] != "alternatif" and k.get("tindak", "followup") != "skip"]
     in_proc = [k for k in act if 2 <= k["stage"] < C.LAST_STAGE]
     fases = [{"fase": f, "count": sum(1 for k in in_proc if k["fase"] == f)} for f in ("Kontrak", "Renovasi", "Serah Terima")]
     # 3) per cluster
@@ -919,8 +991,8 @@ async def build_direksi() -> Dict:
     stage_speed = [{"stage": i, "n": C.STAGES[i]["n"], "short": short[i], "pic": C.STAGES[i]["pic"], "avg": round(sum(durs[i]) / len(durs[i]), 1) if durs.get(i) else None, "sla": sla.get(str(i)), "samples": len(durs.get(i, []))} for i in range(2, 14)]
     sla_total = sum(int(v) for v in sla.values()) or 26
     # 5) perhatian direksi & target dekat
-    attention = [report_kios(k) for k in in_proc if k["status"] == "blocked" or k["lewatSla"] or k["lewatTarget"]]
-    attention.sort(key=lambda k: (k["statusKey"] != "blocked", -(k["daysInStage"] or 0)))
+    attention = [report_kios(k) for k in in_proc if k["status"] == "blocked" or k["lewatSla"] or k["lewatTarget"] or k.get("tindak") == "hold"]
+    attention.sort(key=lambda k: (k["statusKey"] not in ("blocked", "hold"), -(k["daysInStage"] or 0)))
     nxt = _add_months(cur, 1)
     upcoming = [report_kios(k) for k in in_proc if k.get("targetBuka") in (cur, nxt)]
     upcoming.sort(key=lambda k: (k["targetBuka"], -k["stage"]))

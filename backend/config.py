@@ -68,7 +68,9 @@ SLA_GROUPS = [
 ]
 CLUSTERS = {"Jabodetabek": "JBD", "Bandung Raya": "BDG", "Jawa Timur": "JTM", "Lainnya": "LN"}
 STATUSES = ["ontrack", "perhatian", "blocked", "alternatif"]
-STATUS_LABEL = {"ontrack": "On Track", "perhatian": "Perlu Perhatian", "blocked": "Blocked", "alternatif": "Alternatif / Ditolak", "selesai": "Beroperasi"}
+STATUS_LABEL = {"ontrack": "On Track", "perhatian": "Perlu Perhatian", "blocked": "Blocked", "alternatif": "Alternatif / Ditolak", "selesai": "Beroperasi", "hold": "Hold", "skip": "Skip"}
+TINDAK = ["followup", "hold", "skip"]
+TINDAK_LABEL = {"followup": "Follow up", "hold": "Hold", "skip": "Skip"}
 WIL_STATUS = ["dibagi", "visit", "cari", "alternatif", "selesai"]
 WIL_STATUS_LABEL = {"dibagi": "Dibagi", "visit": "Sudah visit", "cari": "Pencarian kios", "alternatif": "Wilayah alternatif", "selesai": "Selesai"}
 
