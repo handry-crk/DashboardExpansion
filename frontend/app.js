@@ -15,6 +15,7 @@
   let token = localStorage.getItem("crk_token") || "";
   let me = null, S = null, R = null, D = null, mode = direksiOnly ? "dir" : (reportOnly ? "div" : "int");
   let filters = { wil: "", st: "", pic: "", mine: false, wSur: "", wSt: "", vFrom: "", vTo: "" };
+  let wPage = 1; const W_PER_PAGE = 10;
   let pollTimer = null, fabBlocked = false, fabWanted = false;
 
   function toast(m, err) { const t = $("toast"); t.textContent = m; t.className = "toast" + (err ? " err" : ""); t.style.display = "block"; clearTimeout(t._t); t._t = setTimeout(() => (t.style.display = "none"), err ? 4000 : 2200); }
@@ -203,7 +204,8 @@
         ${me.role === "Surveyor" ? `<label class="chip ${filters.wSur === me.id ? "on" : ""}" id="fWMine" style="margin:0">Wilayah saya</label>` : ""}
         ${(filters.wSur || filters.wSt || filters.vFrom || filters.vTo) ? `<button class="btn g s" id="fWReset">Reset filter</button>` : ""}
         <span class="note" id="fWCount"></span></div>
-      <div class="card tscroll"><table class="tbl cards" id="tWil"></table></div></section>
+      <div class="card tscroll"><table class="tbl cards" id="tWil"></table></div>
+      <div class="row pager hide" id="wPager"></div></section>
     <section><div class="row"><div><h2><b>Pipeline</b> Kios</h2><div class="sub">Klik kartu untuk update stage, status, dan catatan</div></div><div class="sp"></div>${canEdit() ? `<button class="btn s" id="bKios">+ Kios</button>` : ""}</div>
       <div class="row" style="margin-bottom:10px">
         <select id="fWil" class="inl"><option value="">Semua wilayah</option>${wilNames.map((w) => `<option ${w === filters.wil ? "selected" : ""}>${esc(w)}</option>`).join("")}</select>
@@ -221,20 +223,33 @@
     $("fMine").onclick = () => { filters.mine = !filters.mine; $("fMine").classList.toggle("on", filters.mine); renderPipeline(); };
     if (mine.length) $("mine").innerHTML = mine.slice(0, 8).map(card).join("");
     // wilayah table
-    $("fWSur").onchange = (e) => { filters.wSur = e.target.value; renderInternal(); };
-    $("fWSt").onchange = (e) => { filters.wSt = e.target.value; renderInternal(); };
-    if ($("fWMine")) $("fWMine").onclick = () => { filters.wSur = filters.wSur === me.id ? "" : me.id; renderInternal(); };
-    $("fVFrom").onchange = (e) => { filters.vFrom = e.target.value; renderInternal(); };
-    $("fVTo").onchange = (e) => { filters.vTo = e.target.value; renderInternal(); };
-    if ($("fWReset")) $("fWReset").onclick = () => { filters.wSur = ""; filters.wSt = ""; filters.vFrom = ""; filters.vTo = ""; renderInternal(); };
+    $("fWSur").onchange = (e) => { filters.wSur = e.target.value; wPage = 1; renderInternal(); };
+    $("fWSt").onchange = (e) => { filters.wSt = e.target.value; wPage = 1; renderInternal(); };
+    if ($("fWMine")) $("fWMine").onclick = () => { filters.wSur = filters.wSur === me.id ? "" : me.id; wPage = 1; renderInternal(); };
+    $("fVFrom").onchange = (e) => { filters.vFrom = e.target.value; wPage = 1; renderInternal(); };
+    $("fVTo").onchange = (e) => { filters.vTo = e.target.value; wPage = 1; renderInternal(); };
+    if ($("fWReset")) $("fWReset").onclick = () => { filters.wSur = ""; filters.wSt = ""; filters.vFrom = ""; filters.vTo = ""; wPage = 1; renderInternal(); };
     const rows = S.wilayah.filter((w) => (!filters.wSur || (filters.wSur === "__none" ? !w.surveyorId : w.surveyorId === filters.wSur)) && (!filters.wSt || (filters.wSt.startsWith("t:") ? w.tindak === filters.wSt.slice(2) : w.status === filters.wSt))
       && (!filters.vFrom || (w.visitDate && w.visitDate >= filters.vFrom)) && (!filters.vTo || (w.visitDate && w.visitDate <= filters.vTo)))
       .sort((a, b) => (filters.vFrom || filters.vTo) ? (b.visitDate || "").localeCompare(a.visitDate || "") : a.nama.localeCompare(b.nama));
     $("fWCount").textContent = (filters.wSur || filters.wSt || filters.vFrom || filters.vTo) ? `${rows.length} dari ${S.wilayah.length} wilayah` : "";
+    const totalPages = Math.max(1, Math.ceil(rows.length / W_PER_PAGE));
+    if (wPage > totalPages) wPage = totalPages;
+    const pageRows = rows.slice((wPage - 1) * W_PER_PAGE, wPage * W_PER_PAGE);
     $("tWil").innerHTML = `<thead><tr><th>Wilayah</th><th>Kota</th><th>SPV</th><th>Surveyor</th><th>Status</th><th>Visit</th><th class="r">Kios</th><th>Catatan</th></tr></thead><tbody>` +
-      (rows.length ? rows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span></td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span>${w.tindak !== "followup" ? ` <span class="badge ${w.tindak === "hold" ? "w" : "m"}">${S.tindakLabel[w.tindak]}</span>` : ""}</td><td data-l="Visit">${w.visitDate ? fmtD(w.visitDate) : '<span class="note">–</span>'}${(w.photos || []).length ? ` <span class="badge m">${w.photos.length} foto</span>` : (w.status !== "dibagi" && w.status !== "alternatif" ? ' <span class="badge w">tanpa foto</span>' : "")}</td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
+      (rows.length ? pageRows.map((w) => `<tr class="click" data-w="${w.id}"><td data-l=""><b>${esc(w.nama)}</b> <span class="note">${esc(w.cluster)}</span>${w.jalan ? `<div class="note">${esc(w.jalan)}</div>` : ""}</td><td data-l="Kota">${esc(w.kota)}</td><td data-l="SPV">${esc(w.spvName) || "–"}</td><td data-l="Surveyor">${esc(w.surveyorName) || "–"}</td><td data-l="Status"><span class="pill ${w.status === "alternatif" ? "m" : ""}">${S.wilStatusLabel[w.status]}</span>${w.tindak !== "followup" ? ` <span class="badge ${w.tindak === "hold" ? "w" : "m"}">${S.tindakLabel[w.tindak]}</span>` : ""}</td><td data-l="Visit">${w.visitDate ? fmtD(w.visitDate) : '<span class="note">–</span>'}${(w.photos || []).length ? ` <span class="badge m">${w.photos.length} foto</span>` : (w.status !== "dibagi" && w.status !== "alternatif" ? ' <span class="badge w">tanpa foto</span>' : "")}</td><td data-l="Kios approved / target" class="r">${w.approvedCount} / ${w.targetKios || 1} <span class="note">(${w.kiosCount} kandidat)</span></td><td data-l="${w.catatan ? "Catatan" : ""}" class="note">${esc(w.catatan)}</td></tr>`).join("")
         : `<tr><td colspan="8"><div class="empty">${S.wilayah.length ? "Tidak ada wilayah yang cocok dengan filter." : 'Belum ada wilayah. Mulai dari "+ Wilayah" (langkah 1: Pembagian Wilayah oleh SPV).'}</div></td></tr>`) + `</tbody>`;
     $("tWil").querySelectorAll("tr[data-w]").forEach((tr) => (tr.onclick = () => openWil(tr.dataset.w)));
+    // pagination 10 wilayah per halaman
+    const pg = $("wPager");
+    if (rows.length > W_PER_PAGE) {
+      const nums = [];
+      for (let i = 1; i <= totalPages; i++) { if (i === 1 || i === totalPages || Math.abs(i - wPage) <= 1) nums.push(i); else if (nums[nums.length - 1] !== "…") nums.push("…"); }
+      pg.innerHTML = `<span class="note">Menampilkan ${(wPage - 1) * W_PER_PAGE + 1}–${Math.min(wPage * W_PER_PAGE, rows.length)} dari ${rows.length} wilayah</span><div class="sp"></div>
+        <button class="pgb" data-p="${wPage - 1}" ${wPage === 1 ? "disabled" : ""}>‹</button>${nums.map((n) => n === "…" ? `<span class="note" style="padding:0 4px">…</span>` : `<button class="pgb ${n === wPage ? "on" : ""}" data-p="${n}">${n}</button>`).join("")}<button class="pgb" data-p="${wPage + 1}" ${wPage === totalPages ? "disabled" : ""}>›</button>`;
+      pg.classList.remove("hide");
+      pg.querySelectorAll(".pgb").forEach((b) => (b.onclick = () => { wPage = +b.dataset.p; renderInternal(); $("tWil").scrollIntoView({ block: "start", behavior: "smooth" }); }));
+    } else { pg.innerHTML = ""; pg.classList.add("hide"); }
     renderPipeline();
     if (me.isAdmin) renderPanel();
     document.querySelectorAll(".kios[data-k]").forEach((c) => (c.onclick = () => openKios(c.dataset.k)));
@@ -334,6 +349,7 @@
     showDr(`<div class="row"><h3>${w ? esc(w.nama) : "Wilayah baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
       <div class="f" style="margin-top:12px">
         <div><label>Nama wilayah</label><input id="wNama" value="${esc(d.nama || "")}" ${ro ? "disabled" : ""}></div>
+        <div class="full"><label>Nama jalan</label><input id="wJalan" value="${esc(d.jalan || "")}" placeholder="cth. Jl. Raya Jatiasih, depan Pasar Jatiasih" ${ro ? "disabled" : ""}></div>
         <div><label>Kota</label><input id="wKota" value="${esc(d.kota || "")}" ${ro ? "disabled" : ""}></div>
         <div><label>Cluster</label><select id="wCl" ${ro ? "disabled" : ""}>${S.clusters.map((c) => `<option ${c === d.cluster ? "selected" : ""}>${c}</option>`).join("")}</select></div>
         <div><label>Status</label><select id="wStatus" ${ro ? "disabled" : ""}>${["dibagi", "visit", "cari", "alternatif", "selesai"].map((s, i) => `<option value="${s}" ${s === d.status ? "selected" : ""}>${i < 3 ? i + 1 + " · " : ""}${S.wilStatusLabel[s]}</option>`).join("")}</select></div>
@@ -355,7 +371,7 @@
       ${w ? `<div style="margin-top:14px"><b>Kios di wilayah ini</b>${S.kios.filter((k) => k.wilayahId === w.id).map(card).join("") || '<div class="note">Belum ada kandidat kios</div>'}</div>` : ""}`);
     $("dClose").onclick = closeDr;
     $("dr").querySelectorAll(".kios[data-k]").forEach((c) => (c.onclick = () => openKios(c.dataset.k)));
-    const body = () => ({ nama: $("wNama").value.trim(), kota: $("wKota").value.trim(), cluster: $("wCl").value, status: $("wStatus").value, spvId: $("wSpv").value, surveyorId: $("wSur").value, targetKios: +$("wTarget").value || 1, targetBulan: $("wBulan").value, visitDate: $("wVisit").value, visitNotes: $("wVNote").value.trim(), catatan: $("wNote").value.trim() });
+    const body = () => ({ nama: $("wNama").value.trim(), jalan: $("wJalan").value.trim(), kota: $("wKota").value.trim(), cluster: $("wCl").value, status: $("wStatus").value, spvId: $("wSpv").value, surveyorId: $("wSur").value, targetKios: +$("wTarget").value || 1, targetBulan: $("wBulan").value, visitDate: $("wVisit").value, visitNotes: $("wVNote").value.trim(), catatan: $("wNote").value.trim() });
     const run = async (fn, ok) => { try { await fn(); toast(ok || "Tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } };
     let pending = [];
     const uploadTo = async (wid, files) => { for (const f of files) { const fd = new FormData(); fd.append("file", f); await api(`/api/wilayah/${wid}/files`, { method: "POST", body: fd }); } };

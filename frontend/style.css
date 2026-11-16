@@ -138,3 +138,8 @@ body.lock{overflow:hidden}
 
 .ph{position:relative;display:inline-block}.ph img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
 .phx{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:var(--ink);color:var(--cream);font-size:12px;line-height:20px;padding:0;cursor:pointer}
+
+.pager{margin-top:8px;gap:4px}
+.pgb{min-width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-weight:600;color:var(--ink)}
+.pgb.on{background:var(--red);color:var(--cream);border-color:var(--red)}
+.pgb:disabled{opacity:.4;cursor:not-allowed}

@@ -272,6 +272,7 @@ async def list_members_for_login():
 # ---------------------------------------------------------------- wilayah
 class WilayahIn(BaseModel):
     nama: str = Field(min_length=2)
+    jalan: str = ""
     kota: str = ""
     cluster: str = "Jabodetabek"
     spvId: str = ""
@@ -1177,7 +1178,7 @@ async def import_csv(file: UploadFile = File(...), ctx: Ctx = Depends(require_ad
         w = wil.get(wn.lower())
         if not w:
             cluster = r.get("cluster") if r.get("cluster") in C.CLUSTERS else "Lainnya"
-            w = {"id": nid(), "nama": wn, "kota": r.get("kota", ""), "cluster": cluster, "spvId": "", "surveyorId": "", "status": "cari", "targetKios": 1,
+            w = {"id": nid(), "nama": wn, "jalan": r.get("jalan", ""), "kota": r.get("kota", ""), "cluster": cluster, "spvId": "", "surveyorId": "", "status": "cari", "targetKios": 1,
                  "targetBulan": "", "catatan": "Import spreadsheet", "visitDate": "", "visitNotes": "", "photos": [], "createdAt": iso(), "updatedAt": iso(), "updatedBy": ctx.member["id"]}
             await db.put("wilayah", w)
             wil[wn.lower()] = w
