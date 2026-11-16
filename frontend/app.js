@@ -257,7 +257,7 @@
 
   function card(k) {
     const pct = Math.round((k.stage / 14) * 100);
-    return `<div class="kios ${k.statusKey}" data-k="${k.id}"><b>${esc(k.nama)} <span class="note">${esc(k.kode)}</span></b><small>${esc(k.wilayahNama)} · ${esc(k.stageName)}</small><small>${k.stage === 14 ? `Buka ${fmtD(k.openedAt)} · target ${fmtM(k.targetBuka)}` : `PIC ${esc(k.stagePic)} · target ${fmtM(k.targetBuka)} · ${k.daysInStage} hari di tahap`}</small><div class="row" style="margin-top:4px;gap:6px">${stPill(k)}${flags(k)}</div><div class="prog"><i style="width:${pct}%"></i></div></div>`;
+    return `<div class="kios ${k.statusKey}" data-k="${k.id}"><b>${esc(k.stage === 14 && k.namaOutlet ? k.namaOutlet : k.nama)} <span class="note">${esc(k.kode)}${k.stage === 14 && k.namaOutlet ? " · " + esc(k.nama) : ""}</span></b><small>${esc(k.wilayahNama)} · ${esc(k.stageName)}</small><small>${k.stage === 14 ? `Buka ${fmtD(k.openedAt)} · target ${fmtM(k.targetBuka)}` : `PIC ${esc(k.stagePic)} · target ${fmtM(k.targetBuka)} · ${k.daysInStage} hari di tahap`}</small><div class="row" style="margin-top:4px;gap:6px">${stPill(k)}${flags(k)}</div><div class="prog"><i style="width:${pct}%"></i></div></div>`;
   }
 
   function renderPipeline() {
@@ -284,7 +284,7 @@
     const canBackfill = !ro && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && k.tindak === "followup" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
     const mayBack = k && k.stage > 0 && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
-    showDr(`<div class="row"><h3>${k ? esc(k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
+    showDr(`<div class="row"><h3>${k ? esc(k.stage === 14 && k.namaOutlet ? k.namaOutlet : k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
       <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""}${k.backfilled ? ' · <span class="pill m">riwayat backdate</span>' : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
       ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Next stage:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
@@ -295,7 +295,8 @@
         ${!ro && k.status !== "alternatif" ? `<button class="btn o s" id="bStatus">Update status</button>` : ""}${k.status === "alternatif" ? `<button class="btn o s" id="bReopen">Reopen</button>` : (!ro ? `<button class="btn g s" id="bAlt">Jadikan alternatif</button>` : "")}</div>
         <div class="row" style="margin-top:8px"><span class="note" style="min-width:90px">Tindak lanjut</span><select id="sTindak" class="inl"><option value="followup" ${k.tindak === "followup" ? "selected" : ""}>Follow up</option><option value="hold" ${k.tindak === "hold" ? "selected" : ""}>Hold</option><option value="skip" ${k.tindak === "skip" ? "selected" : ""}>Skip</option></select>${!ro ? `<button class="btn o s" id="bTindak">Set</button>` : ""}${k.tindak !== "followup" ? `<span class="note">${esc(k.tindakLabel)} sejak ${fmtD(k.tindakAt)}${k.tindakNote ? " — " + esc(k.tindakNote) : ""}</span>` : ""}</div></div>` : ""}
       <div class="f">
-        <div class="full"><label>Nama / lokasi kios</label><input id="kNama" value="${esc(d.nama || "")}" ${ro ? "disabled" : ""}></div>
+        <div class="full"><label>Nama / lokasi kios <span class="note">(nama kerja selama proses, cth. "Ruko Jatiasih B2")</span></label><input id="kNama" value="${esc(d.nama || "")}" ${ro ? "disabled" : ""}></div>
+        <div class="full"><label>Nama outlet (saat beroperasi) <span class="note">(nama resmi outlet, wajib sebelum Beroperasi, cth. "Cimol Bojot AA Jatiasih")</span></label><input id="kOutlet" value="${esc(d.namaOutlet || "")}" ${ro ? "disabled" : ""}></div>
         <div><label>Wilayah</label><select id="kWil" ${ro ? "disabled" : ""}><option value="">– pilih –</option>${S.wilayah.map((w) => `<option value="${w.id}" ${w.id === d.wilayahId ? "selected" : ""}>${esc(w.nama)}</option>`).join("")}</select></div>
         <div><label>Target buka (bulan)</label><input id="kTarget" type="month" value="${esc(d.targetBuka || "")}" ${ro ? "disabled" : ""}></div>
         <div class="full"><label>Alamat</label><input id="kAlamat" value="${esc(d.alamat || "")}" ${ro ? "disabled" : ""}></div>
@@ -326,7 +327,7 @@
         <div class="row" style="margin-top:6px"><input id="cText" class="inl" style="flex:1" placeholder="Tulis komentar… (@nama untuk notifikasi email)"><button class="btn o s" id="bCm">Kirim</button></div>
         <div class="log" id="kLog"><div class="note">Memuat…</div></div></div>` : ""}`);
     $("dClose").onclick = closeDr;
-    const collect = () => ({ nama: $("kNama").value.trim(), wilayahId: $("kWil").value, targetBuka: $("kTarget").value, alamat: $("kAlamat").value.trim(), mapsUrl: $("kMaps").value.trim(), luas: +$("kLuas").value || 0, sewaTahun: +$("kSewa").value || 0, dp: +$("kDp").value || 0, rabNilai: +$("kRab").value || 0, pemilikNama: $("kPemilik").value.trim(), pemilikHp: $("kPemilikHp").value.trim(), vendorNama: $("kVendor").value.trim(), renovasiPct: +$("kPct").value || 0, catatan: $("kNote").value.trim() });
+    const collect = () => ({ nama: $("kNama").value.trim(), namaOutlet: $("kOutlet").value.trim(), wilayahId: $("kWil").value, targetBuka: $("kTarget").value, alamat: $("kAlamat").value.trim(), mapsUrl: $("kMaps").value.trim(), luas: +$("kLuas").value || 0, sewaTahun: +$("kSewa").value || 0, dp: +$("kDp").value || 0, rabNilai: +$("kRab").value || 0, pemilikNama: $("kPemilik").value.trim(), pemilikHp: $("kPemilikHp").value.trim(), vendorNama: $("kVendor").value.trim(), renovasiPct: +$("kPct").value || 0, catatan: $("kNote").value.trim() });
     const save = async () => { const body = collect(); if (!body.nama) throw new Error("Nama kios wajib diisi"); if (!body.wilayahId) throw new Error("Pilih wilayah"); return k ? api(`/api/kios/${k.id}`, { method: "PUT", body }) : api("/api/kios", { method: "POST", body }); };
     const run = async (fn, ok) => { try { await fn(); toast(ok || "Tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } };
     // --- backdate UI
@@ -338,7 +339,7 @@
     if (k) { try { const tl = await api(`/api/kios/${k.id}/timeline`); tl.filter((l) => l.type === "stage" && l.fromStage !== l.toStage).forEach((l) => { bfPrefill[l.toStage] = (l.at || "").slice(0, 10); }); } catch (e) { } }
     if ($("bfOn")) {
       $("bfOn").onchange = () => { $("bfBox").classList.toggle("hide", !$("bfOn").checked); if ($("bfOn").checked) bfDates(); };
-      $("bfStage").onchange = () => { bfDates(); const op = +$("bfStage").value === 14; $("bfStatus").disabled = op; if (op) $("bfStatus").value = "ontrack"; $("bfHint").textContent = op ? "Beroperasi: tanggal tahap 15 menjadi tanggal buka resmi (masuk grafik Pembukaan per Bulan dan hitungan DP → buka)." : ""; };
+      $("bfStage").onchange = () => { bfDates(); const op = +$("bfStage").value === 14; $("bfStatus").disabled = op; if (op) $("bfStatus").value = "ontrack"; $("bfHint").textContent = op ? "Beroperasi: isi kolom Nama outlet di atas; tanggal tahap 15 menjadi tanggal buka resmi (masuk grafik Pembukaan per Bulan dan hitungan DP → buka)." : ""; };
     }
     const backfillBody = () => { const dates = {}; document.querySelectorAll(".bfd").forEach((i) => { if (i.value) dates[i.dataset.i] = i.value; }); return { stage: +$("bfStage").value, dates, status: $("bfStatus").value, note: $("bfNote").value.trim() }; };
     if ($("bSave")) $("bSave").onclick = () => run(async () => {
@@ -492,7 +493,7 @@
         <div class="card tscroll"><table class="tbl cards"><thead><tr><th>Kios</th><th>Wilayah</th><th>Tahap saat ini</th><th>PIC</th><th>Status</th><th>Target buka</th><th>Langkah berikutnya</th><th>Update terakhir</th></tr></thead><tbody>
         ${inProc.length ? inProc.map((k) => `<tr><td data-l=""><b>${esc(k.nama)}</b><div class="note">${esc(k.kode)} · ${esc(k.alamat || "")}</div></td><td data-l="Wilayah">${esc(k.wilayahNama)}</td><td data-l="Tahap">${k.stage - 1}. ${esc(k.stageName)} <span class="note">(${k.daysInStage} hari)</span></td><td data-l="PIC"><span class="pill">${esc(k.stagePic)}</span></td><td data-l="Status"><span class="st ${k.statusKey}"><i></i>${esc(k.statusLabel)}</span>${flags(k)}</td><td data-l="Target buka">${fmtM(k.targetBuka)}</td><td data-l="Langkah berikutnya" class="note">${esc(k.nextStage)} · ${esc(k.nextPic)}</td><td data-l="Update terakhir" class="note">${fmtD(k.lastAt)}<br>${esc(k.lastNote)}</td></tr>`).join("") : `<tr><td colspan="8"><div class="empty">Belum ada kios dalam proses.</div></td></tr>`}</tbody></table></div></section>
       <section><h2><b>Kios</b> Beroperasi</h2><div class="sub">Hasil ekspansi yang sudah serah terima operasional</div>
-        ${open.length ? open.map((k) => `<div class="rcard"><b>${esc(k.nama)} <span class="note">${esc(k.kode)}</span></b><div class="meta">${esc(k.wilayahNama)} · beroperasi sejak ${fmtD(k.openedAt)}</div></div>`).join("") : '<div class="empty">Belum ada kios yang beroperasi dari pipeline ini.</div>'}</section>
+        ${open.length ? open.map((k) => `<div class="rcard"><b>${esc(k.namaOutlet || k.nama)} <span class="note">${esc(k.kode)}</span></b><div class="meta">${esc(k.wilayahNama)}${k.namaOutlet ? " · lokasi " + esc(k.nama) : ""} · beroperasi sejak ${fmtD(k.openedAt)}</div></div>`).join("") : '<div class="empty">Belum ada kios yang beroperasi dari pipeline ini.</div>'}</section>
       <section><h2><b>Flow</b> & PIC Ekspansi</h2><div class="sub">Tahapan setiap kios setelah approval, beserta PIC yang bertanggung jawab</div>
         <div class="flow">${R.stages.filter((s) => s.i < 14).map((s) => `<div class="fb"><span class="no">${s.i - 1}</span>${esc(s.n)}<small>PIC: ${esc(s.pic)}${s.sla ? ` · SLA ${s.sla} hari` : ""}</small></div>`).join("")}</div>
         ${R.slaGroups ? `<div class="card" style="margin-top:12px"><b>SLA antar flow</b><div class="note" style="margin-bottom:6px">Batas waktu yang disepakati Tim Ekspansi per kelompok tahap; total ${R.slaGroups.reduce((a, g) => a + g.hari, 0)} hari kerja dari pengajuan DP sampai opening.</div>

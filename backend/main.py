@@ -368,6 +368,7 @@ async def delete_wilayah(wid: str, ctx: Ctx = Depends(require_admin)):
 # ---------------------------------------------------------------- kios
 class KiosIn(BaseModel):
     nama: str = Field(min_length=2)
+    namaOutlet: str = ""
     wilayahId: str
     alamat: str = ""
     mapsUrl: str = ""
@@ -474,6 +475,8 @@ def check_gates(k: Dict, to: int, cur: Optional[int] = None):
         err(400, "Isi nilai sewa per tahun sebelum Pelunasan Sewa")
     if crossing(9) and not (k.get("rabNilai") or 0) > 0:
         err(400, "Isi nilai RAB vendor yang disepakati sebelum Pengajuan Pembayaran Vendor")
+    if crossing(14) and not (k.get("namaOutlet") or "").strip():
+        err(400, "Isi Nama outlet (nama resmi saat beroperasi) sebelum menandai Beroperasi")
 
 
 @app.post("/api/kios/{kid}/stage")
@@ -674,6 +677,8 @@ async def kios_backfill(kid: str, body: BackfillIn, ctx: Ctx = Depends(require_l
         prev = si
     fields = {"stage": body.stage, "status": body.status, "createdAt": first_iso or k.get("createdAt"), "updatedAt": iso(), "updatedBy": ctx.member["id"], "backfilled": True}
     if body.stage == C.LAST_STAGE:
+        if not (k.get("namaOutlet") or "").strip():
+            err(400, "Isi Nama outlet (nama resmi saat beroperasi) sebelum menandai Beroperasi")
         fields["openedAt"] = parsed[body.stage]
         fields["status"] = "ontrack"
     await db.update("kios", kid, fields)
@@ -938,7 +943,7 @@ def headline(sm: Dict) -> str:
 
 def report_kios(k: Dict) -> Dict:
     """Payload kios untuk All Divisi — tanpa data internal (sewa, DP, pemilik, komentar)."""
-    keys = ["id", "kode", "nama", "wilayahNama", "cluster", "alamat", "stage", "stageName", "stagePic", "fase", "statusKey", "statusLabel",
+    keys = ["id", "kode", "nama", "namaOutlet", "wilayahNama", "cluster", "alamat", "stage", "stageName", "stagePic", "fase", "statusKey", "statusLabel",
             "nextStage", "nextPic", "targetBuka", "daysInStage", "sla", "lewatSla", "stalled", "lewatTarget", "lastNote", "lastAt", "openedAt", "vendorNama", "renovasiPct", "tindak", "tindakLabel", "tindakNote"]
     return {x: k.get(x) for x in keys}
 
@@ -1209,9 +1214,9 @@ async def export_csv(ctx: Ctx = Depends(require_admin)):
     buf = io.StringIO()
     buf.write("﻿")
     w = csv.writer(buf, delimiter=";")
-    w.writerow(["kode", "nama", "wilayah", "cluster", "alamat", "tahap", "namaTahap", "pic", "status", "targetBuka", "sewaTahun", "dp", "rabNilai", "vendor", "hariDiTahap", "lewatSla", "catatanTerakhir", "updateTerakhir", "openedAt"])
+    w.writerow(["kode", "nama", "namaOutlet", "wilayah", "cluster", "alamat", "tahap", "namaTahap", "pic", "status", "targetBuka", "sewaTahun", "dp", "rabNilai", "vendor", "hariDiTahap", "lewatSla", "catatanTerakhir", "updateTerakhir", "openedAt"])
     for k in st["kios"]:
-        w.writerow([k["kode"], k["nama"], k["wilayahNama"], k["cluster"], k.get("alamat", ""), k["stage"], k["stageName"], k["stagePic"], k["statusLabel"], k.get("targetBuka", ""),
+        w.writerow([k["kode"], k["nama"], k.get("namaOutlet", ""), k["wilayahNama"], k["cluster"], k.get("alamat", ""), k["stage"], k["stageName"], k["stagePic"], k["statusLabel"], k.get("targetBuka", ""),
                     k.get("sewaTahun", 0), k.get("dp", 0), k.get("rabNilai", 0), k.get("vendorNama", ""), k["daysInStage"], "ya" if k["lewatSla"] else "", k["lastNote"], k["lastAt"], k.get("openedAt", "")])
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=expansion-tracker.csv"})
 
@@ -1273,7 +1278,7 @@ async def import_csv(file: UploadFile = File(...), ctx: Ctx = Depends(require_ad
         except Exception:
             upd_iso = iso()
         k = {"id": nid(), "kode": await next_code(w["cluster"]), "nama": r["nama"], "wilayahId": w["id"], "alamat": r.get("alamat", ""), "mapsUrl": "",
-             "targetBuka": r.get("targetbuka", "")[:7], "luas": 0, "sewaTahun": num(r.get("sewatahun")), "dp": num(r.get("dp")), "pemilikNama": "", "pemilikHp": "",
+             "targetBuka": r.get("targetbuka", "")[:7], "namaOutlet": r.get("namaoutlet", ""), "luas": 0, "sewaTahun": num(r.get("sewatahun")), "dp": num(r.get("dp")), "pemilikNama": "", "pemilikHp": "",
              "vendorNama": r.get("vendor", ""), "rabNilai": num(r.get("rab")), "renovasiPct": 0, "catatan": r.get("catatan", ""), "stage": stage, "status": status,
              "spkFile": "", "photos": [], "openedAt": upd_iso[:10] if stage == C.LAST_STAGE else "", "createdAt": upd_iso, "createdBy": ctx.member["id"], "updatedAt": upd_iso, "updatedBy": ctx.member["id"]}
         await db.put("kios", k)

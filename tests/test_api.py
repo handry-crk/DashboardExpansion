@@ -378,6 +378,10 @@ async def test_backfill_history(cl):
 async def test_backfill_until_beroperasi(cl):
     r = await cl.post("/api/kios", json={"nama": "Kios Lama Sudah Buka", "wilayahId": T["wid"], "targetBuka": "2026-10"}, headers=H("dimas"))
     kid = r.json()["id"]
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 14, "dates": {"14": "2026-10-05"}}, headers=H("dimas"))
+    assert r.status_code == 400 and "Nama outlet" in r.json()["detail"]
+    r = await cl.put(f"/api/kios/{kid}", json={"nama": "Kios Lama Sudah Buka", "namaOutlet": "Cimol Bojot AA Jatiasih", "wilayahId": T["wid"], "targetBuka": "2026-10"}, headers=H("dimas"))
+    assert r.status_code == 200
     r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 14, "dates": {"0": "2026-08-01", "2": "2026-08-10", "7": "2026-09-01", "11": "2026-09-10", "14": "2026-10-05"}, "status": "blocked"}, headers=H("dimas"))
     assert r.status_code == 200, r.text
     k = r.json()
