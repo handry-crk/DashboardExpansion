@@ -321,7 +321,7 @@
           <div class="note" style="margin-top:4px">Tanggal yang dikosongkan dianggap dilewati pada tanggal tahap berikutnya. Minimal isi tanggal tahap saat ini. <span id="bfHint" style="color:var(--red)"></span></div>
         </div></div>` : ""}
       <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}<div class="sp"></div>${k && me.isAdmin ? `<button class="btn g s" id="bDel">Delete</button>` : ""}</div>
-      ${k ? `<div style="margin-top:14px"><b>Dokumen & foto</b><div class="note">SPK: ${k.spkFile ? `<a href="${esc(k.spkFile)}" target="_blank">${esc(k.spkFileName || "file SPK")}</a>` : "belum ada"} ${!ro ? `· <label style="display:inline;cursor:pointer;color:var(--red)">upload SPK<input type="file" id="fSpk" class="hide"></label>` : ""}</div>
+      ${k ? `<div style="margin-top:14px"><b>Dokumen & foto</b><div class="note">SPK: ${k.spkFile ? `<a href="${esc(k.spkFile)}" target="_blank">${esc(k.spkFileName || "file SPK")}</a>${k.spkSize ? ` <span class="note">(${(k.spkSize / 1024 / 1024).toFixed(1)} MB)</span>` : ""}` : "belum ada"} <span class="note">· maks ${(S.maxUploadMb || {}).doc || 20} MB</span> ${!ro ? `· <label style="display:inline;cursor:pointer;color:var(--red)">upload SPK<input type="file" id="fSpk" class="hide"></label>` : ""}</div>
         <div class="row" style="margin-top:6px">${(k.photos || []).map((p) => `<a href="${esc(p.url)}" target="_blank" class="pill ink">${esc(p.name || "foto")}</a>`).join("")}${!ro ? `<label class="pill" style="cursor:pointer">+ foto<input type="file" id="fPhoto" accept="image/*" capture="environment" class="hide"></label>` : ""}</div></div>
       <div style="margin-top:14px"><b>Riwayat update & komentar</b>
         <div class="row" style="margin-top:6px"><input id="cText" class="inl" style="flex:1" placeholder="Tulis komentar… (@nama untuk notifikasi email)"><button class="btn o s" id="bCm">Kirim</button></div>
@@ -355,7 +355,10 @@
     if ($("bReopen")) $("bReopen").onclick = () => run(async () => { await api(`/api/kios/${k.id}/alternatif`, { method: "POST", body: { note: "Dibuka kembali" } }); closeDr(); }, "Kios di-reopen");
     if ($("bDel")) $("bDel").onclick = () => confirmTwice("Delete kios ini? Tekan Delete lagi untuk konfirmasi.", () => run(async () => { await api(`/api/kios/${k.id}`, { method: "DELETE" }); closeDr(); }, "Terhapus"));
     if ($("bCm")) $("bCm").onclick = () => run(async () => { const t = $("cText").value.trim(); if (!t) return; await api(`/api/kios/${k.id}/comments`, { method: "POST", body: { text: t } }); $("cText").value = ""; loadTimeline(k.id); }, "Komentar terkirim");
-    const up = (inputId, kind) => { const el = $(inputId); if (!el) return; el.onchange = () => run(async () => { const fd = new FormData(); fd.append("file", el.files[0]); await api(`/api/kios/${k.id}/files?kind=${kind}`, { method: "POST", body: fd }); closeDr(); }, "File ter-upload"); };
+    const up = (inputId, kind) => { const el = $(inputId); if (!el) return; el.onchange = () => run(async () => {
+      const f = el.files[0]; const lim = (S.maxUploadMb || {})[kind === "spk" ? "doc" : "photo"] || 20;
+      if (f.size > lim * 1024 * 1024) throw new Error(`Ukuran file maksimal ${lim} MB (file ini ${(f.size / 1024 / 1024).toFixed(1)} MB)`);
+      const fd = new FormData(); fd.append("file", f); toast("Upload " + (f.size / 1024 / 1024).toFixed(1) + " MB…"); await api(`/api/kios/${k.id}/files?kind=${kind}`, { method: "POST", body: fd }); closeDr(); }, "File ter-upload"); };
     up("fSpk", "spk"); up("fPhoto", "photo");
     if (k) loadTimeline(k.id);
   }

@@ -743,8 +743,9 @@ async def wilayah_tindak(wid: str, body: TindakIn, ctx: Ctx = Depends(require_lo
 # ---------------------------------------------------------------- files
 async def _store_file(owner_col: str, owner_id: str, file: UploadFile, kind: str, by: str) -> Dict:
     data = await file.read()
-    if len(data) > 10 * 1024 * 1024:
-        err(400, "Ukuran file maksimal 10 MB")
+    limit = C.MAX_UPLOAD_MB_PHOTO if kind == "photo" else C.MAX_UPLOAD_MB_DOC
+    if len(data) > limit * 1024 * 1024:
+        err(400, f"Ukuran file maksimal {limit} MB (file ini {len(data) / 1024 / 1024:.1f} MB)")
     if kind == "photo" and not (file.content_type or "").startswith("image/"):
         err(400, "File foto harus berupa gambar (JPG/PNG/HEIC)")
     os.makedirs(C.UPLOAD_DIR, exist_ok=True)
@@ -802,23 +803,13 @@ async def upload_file(kid: str, kind: str = Query("photo"), file: UploadFile = F
     k = await db.get("kios", kid)
     if not k:
         err(404, "Kios tidak ditemukan")
-    data = await file.read()
-    if len(data) > 10 * 1024 * 1024:
-        err(400, "Ukuran file maksimal 10 MB")
-    os.makedirs(C.UPLOAD_DIR, exist_ok=True)
-    fid = nid()
-    ext = os.path.splitext(file.filename or "")[1].lower()[:8]
-    path = os.path.join(C.UPLOAD_DIR, fid + ext)
-    with open(path, "wb") as f:
-        f.write(data)
-    meta = {"id": fid, "kiosId": kid, "name": file.filename, "path": path, "kind": kind, "size": len(data), "at": iso(), "byId": ctx.member["id"]}
-    await db.put("files", meta)
-    url = f"/api/files/{fid}"
+    meta = await _store_file("kios", kid, file, kind, ctx.member["id"])
+    url = f"/api/files/{meta['id']}"
     if kind == "spk":
-        await db.update("kios", kid, {"spkFile": url, "spkFileName": file.filename, "updatedAt": iso()})
+        await db.update("kios", kid, {"spkFile": url, "spkFileName": file.filename, "spkSize": meta["size"], "updatedAt": iso()})
     else:
-        await db.update("kios", kid, {"photos": (k.get("photos") or []) + [{"id": fid, "url": url, "name": file.filename}], "updatedAt": iso()})
-    return {"id": fid, "url": url, "name": file.filename}
+        await db.update("kios", kid, {"photos": (k.get("photos") or []) + [{"id": meta["id"], "url": url, "name": file.filename}], "updatedAt": iso()})
+    return {"id": meta["id"], "url": url, "name": file.filename, "size": meta["size"]}
 
 
 @app.get("/api/files/{fid}")
@@ -893,7 +884,7 @@ async def build_state(ctx: Optional[Ctx] = None) -> Dict:
         w["approvedCount"] = sum(1 for k in ek if k["wilayahId"] == w["id"] and k["status"] != "alternatif" and k["tindak"] != "skip" and k["stage"] >= 2)
     return {"settings": public_settings(settings), "members": [member_public(m) for m in members_raw], "wilayah": wil, "kios": ek,
             "stages": C.STAGES, "fases": C.FASES, "roles": C.ROLES, "roleLabel": C.ROLE_LABEL, "clusters": list(C.CLUSTERS.keys()),
-            "statusLabel": C.STATUS_LABEL, "wilStatusLabel": C.WIL_STATUS_LABEL, "tindakLabel": C.TINDAK_LABEL, "today": today(), "month": this_month(), "serverTime": iso()}
+            "statusLabel": C.STATUS_LABEL, "wilStatusLabel": C.WIL_STATUS_LABEL, "tindakLabel": C.TINDAK_LABEL, "maxUploadMb": {"doc": C.MAX_UPLOAD_MB_DOC, "photo": C.MAX_UPLOAD_MB_PHOTO}, "today": today(), "month": this_month(), "serverTime": iso()}
 
 
 @app.get("/api/state")

@@ -18,6 +18,8 @@ SMTP = {
     "from": os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "")),
 }
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+MAX_UPLOAD_MB_DOC = int(os.getenv("MAX_UPLOAD_MB_DOC", "20"))     # SPK / dokumen (PDF, scan)
+MAX_UPLOAD_MB_PHOTO = int(os.getenv("MAX_UPLOAD_MB_PHOTO", "20"))  # foto lokasi / renovasi
 
 ROLES = ["Manager", "SPV", "Surveyor", "SDO", "Legal", "Finance", "Admin"]
 ROLE_LABEL = {"Manager": "Expansion Manager (akses penuh)", "SPV": "SPV Ekspansi", "Surveyor": "Surveyor", "SDO": "Store Development Officer",
