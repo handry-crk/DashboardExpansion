@@ -317,7 +317,7 @@
           <div><label>Status saat ini</label><select id="bfStatus"><option value="ontrack">On Track</option><option value="perhatian">Perlu Perhatian</option><option value="blocked">Blocked</option></select></div>
           <div><label>Catatan</label><input id="bfNote" placeholder="cth. migrasi dari spreadsheet"></div></div>
           <div id="bfDates" style="margin-top:8px"></div>
-          <div class="note" style="margin-top:4px">Tanggal yang dikosongkan dianggap dilewati pada tanggal tahap berikutnya. Minimal isi tanggal tahap saat ini.</div>
+          <div class="note" style="margin-top:4px">Tanggal yang dikosongkan dianggap dilewati pada tanggal tahap berikutnya. Minimal isi tanggal tahap saat ini. <span id="bfHint" style="color:var(--red)"></span></div>
         </div></div>` : ""}
       <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}<div class="sp"></div>${k && me.isAdmin ? `<button class="btn g s" id="bDel">Delete</button>` : ""}</div>
       ${k ? `<div style="margin-top:14px"><b>Dokumen & foto</b><div class="note">SPK: ${k.spkFile ? `<a href="${esc(k.spkFile)}" target="_blank">${esc(k.spkFileName || "file SPK")}</a>` : "belum ada"} ${!ro ? `· <label style="display:inline;cursor:pointer;color:var(--red)">upload SPK<input type="file" id="fSpk" class="hide"></label>` : ""}</div>
@@ -338,7 +338,7 @@
     if (k) { try { const tl = await api(`/api/kios/${k.id}/timeline`); tl.filter((l) => l.type === "stage" && l.fromStage !== l.toStage).forEach((l) => { bfPrefill[l.toStage] = (l.at || "").slice(0, 10); }); } catch (e) { } }
     if ($("bfOn")) {
       $("bfOn").onchange = () => { $("bfBox").classList.toggle("hide", !$("bfOn").checked); if ($("bfOn").checked) bfDates(); };
-      $("bfStage").onchange = bfDates;
+      $("bfStage").onchange = () => { bfDates(); const op = +$("bfStage").value === 14; $("bfStatus").disabled = op; if (op) $("bfStatus").value = "ontrack"; $("bfHint").textContent = op ? "Beroperasi: tanggal tahap 15 menjadi tanggal buka resmi (masuk grafik Pembukaan per Bulan dan hitungan DP → buka)." : ""; };
     }
     const backfillBody = () => { const dates = {}; document.querySelectorAll(".bfd").forEach((i) => { if (i.value) dates[i.dataset.i] = i.value; }); return { stage: +$("bfStage").value, dates, status: $("bfStatus").value, note: $("bfNote").value.trim() }; };
     if ($("bSave")) $("bSave").onclick = () => run(async () => {

@@ -373,3 +373,25 @@ async def test_backfill_history(cl):
     # direksi: kecepatan per tahap kini punya sampel
     d = (await cl.get(f"/api/direksi?t={st['settings']['shareToken']}")).json()
     assert any(x["samples"] > 0 for x in d["stageSpeed"])
+
+
+async def test_backfill_until_beroperasi(cl):
+    r = await cl.post("/api/kios", json={"nama": "Kios Lama Sudah Buka", "wilayahId": T["wid"], "targetBuka": "2026-10"}, headers=H("dimas"))
+    kid = r.json()["id"]
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 14, "dates": {"0": "2026-08-01", "2": "2026-08-10", "7": "2026-09-01", "11": "2026-09-10", "14": "2026-10-05"}, "status": "blocked"}, headers=H("dimas"))
+    assert r.status_code == 200, r.text
+    k = r.json()
+    assert k["stage"] == 14 and k["openedAt"] == "2026-10-05" and k["status"] == "ontrack"  # beroperasi selalu on track
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    e = next(x for x in st["kios"] if x["id"] == kid)
+    assert e["statusKey"] == "selesai"
+    tok = st["settings"]["shareToken"]
+    rep = (await cl.get(f"/api/report?t={tok}")).json()
+    assert rep["summary"]["beroperasi"] >= 1
+    d = (await cl.get(f"/api/direksi?t={tok}")).json()
+    okt = next(m for m in d["monthly"] if m["month"] == "2026-10")
+    assert okt["actual"] >= 1                      # masuk grafik pembukaan per bulan Okt 2026
+    assert d["leadTimeAvg"] == 56 and d["leadTimeN"] >= 1   # 10 Agu → 5 Okt = 56 hari DP→buka
+    # kios beroperasi tidak bisa dimajukan / di-hold
+    r = await cl.post(f"/api/kios/{kid}/tindak", json={"tindak": "hold", "note": "x"}, headers=H("dimas"))
+    assert r.status_code == 400
