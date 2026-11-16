@@ -609,6 +609,79 @@ async def timeline(kid: str, ctx: Ctx = Depends(require_login)):
     return items
 
 
+# ---------------------------------------------------------------- backfill riwayat (kios yang sudah berjalan sebelum dashboard ada)
+class BackfillIn(BaseModel):
+    stage: int
+    dates: Dict[str, str] = {}   # {"0": "2026-09-01", "2": "2026-09-10", ...} tanggal MASUK tahap tsb (YYYY-MM-DD)
+    status: str = "ontrack"
+    note: str = ""
+
+
+@app.post("/api/kios/{kid}/backfill")
+async def kios_backfill(kid: str, body: BackfillIn, ctx: Ctx = Depends(require_login)):
+    """Tulis ulang riwayat perpindahan tahap dengan tanggal historis. Gate dilewati (data lama).
+    Hanya SPV / Manager / Admin. Komentar dan log status tetap; log perpindahan tahap lama diganti."""
+    if not (ctx.is_admin or ctx.role in ("Manager", "SPV")):
+        err(403, "Hanya SPV / Manager / Admin yang dapat mengisi riwayat backdate")
+    k = await db.get("kios", kid)
+    if not k:
+        err(404, "Kios tidak ditemukan")
+    if not (0 <= body.stage <= C.LAST_STAGE):
+        err(400, "Tahap tidak valid")
+    if body.status not in ("ontrack", "perhatian", "blocked"):
+        err(400, "Status tidak valid")
+    import re as _re
+    parsed: Dict[int, str] = {}
+    for sk, dv in (body.dates or {}).items():
+        if not str(sk).isdigit() or not dv:
+            continue
+        si = int(sk)
+        if not (0 <= si <= body.stage):
+            err(400, f"Tanggal untuk tahap {si + 1} melebihi tahap saat ini")
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", dv):
+            err(400, f"Format tanggal tahap {si + 1} harus YYYY-MM-DD")
+        if dv > today():
+            err(400, f"Tanggal tahap {si + 1} tidak boleh di masa depan")
+        parsed[si] = dv
+    if 0 not in parsed:
+        parsed[0] = min(parsed.values()) if parsed else (k.get("createdAt") or iso())[:10]
+    if body.stage not in parsed:
+        err(400, f"Isi tanggal masuk tahap saat ini ({C.STAGES[body.stage]['n']})")
+    # tahap yang tidak diisi tanggalnya memakai tanggal tahap berikutnya yang terisi (dilewati di hari yang sama)
+    seq = []
+    nxt = None
+    for si in range(body.stage, -1, -1):
+        if si in parsed:
+            nxt = parsed[si]
+        seq.append((si, nxt))
+    seq.reverse()
+    last = ""
+    for si, dv in seq:
+        if dv < last:
+            err(400, f"Tanggal tahap {si + 1} ({dv}) lebih awal dari tahap sebelumnya ({last})")
+        last = dv
+    # hapus log perpindahan tahap lama (fromStage != toStage), simpan log status/tindak/komentar
+    for l in await db.find("stagelog", {"kiosId": kid}):
+        if l.get("fromStage") != l.get("toStage"):
+            await db.delete("stagelog", l["id"])
+    prev = -1
+    first_iso = None
+    for si, dv in seq:
+        at = datetime.strptime(dv, "%Y-%m-%d").replace(hour=9, tzinfo=C.TZ).isoformat(timespec="microseconds")
+        first_iso = first_iso or at
+        await db.put("stagelog", {"id": nid(), "kiosId": kid, "at": at, "byId": ctx.member["id"], "fromStage": prev, "toStage": si,
+                                  "fromStatus": "ontrack", "toStatus": "ontrack", "note": ("Kandidat kios ditambahkan" if si == 0 else f"Tahap → {C.STAGES[si]['n']}") + " (backdate)"})
+        prev = si
+    fields = {"stage": body.stage, "status": body.status, "createdAt": first_iso or k.get("createdAt"), "updatedAt": iso(), "updatedBy": ctx.member["id"], "backfilled": True}
+    if body.stage == C.LAST_STAGE:
+        fields["openedAt"] = parsed[body.stage]
+        fields["status"] = "ontrack"
+    await db.update("kios", kid, fields)
+    await add_log(kid, ctx.member["id"], body.stage, body.stage, k["status"], fields["status"], "Riwayat tahap diisi backdate" + (f": {body.note.strip()}" if body.note.strip() else ""))
+    await sync_wilayah_status(k["wilayahId"])
+    return await db.get("kios", kid)
+
+
 # ---------------------------------------------------------------- tindak lanjut (Follow up / Hold / Skip)
 class TindakIn(BaseModel):
     tindak: str

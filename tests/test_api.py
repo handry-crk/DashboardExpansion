@@ -341,3 +341,35 @@ async def test_tindak_lanjut(cl):
     assert r.status_code == 400
     r = await cl.post(f"/api/wilayah/{wid}/tindak", json={"tindak": "hold", "note": "tunggu budget Q1"}, headers=H("rani"))
     assert r.status_code == 200 and r.json()["tindak"] == "hold" and "Hold" in r.json()["catatan"]
+
+
+async def test_backfill_history(cl):
+    r = await cl.post("/api/kios", json={"nama": "Kios Lama Cimahi", "wilayahId": T["wid"]}, headers=H("rani"))
+    kid = r.json()["id"]
+    # Surveyor tidak boleh backfill
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"8": "2026-10-20"}}, headers=H("rani"))
+    assert r.status_code == 403
+    # tanggal masa depan / urutan salah ditolak
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"8": "2099-01-01"}}, headers=H("dimas"))
+    assert r.status_code == 400
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"2": "2026-10-10", "8": "2026-10-01"}}, headers=H("dimas"))
+    assert r.status_code == 400
+    # tanpa tanggal tahap saat ini ditolak
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"2": "2026-10-10"}}, headers=H("dimas"))
+    assert r.status_code == 400
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"0": "2026-09-01", "2": "2026-09-15", "6": "2026-10-01", "8": "2026-10-20"}, "status": "perhatian", "note": "migrasi spreadsheet"}, headers=H("dimas"))
+    assert r.status_code == 200, r.text
+    k = r.json()
+    assert k["stage"] == 8 and k["status"] == "perhatian" and k["backfilled"] is True and k["createdAt"].startswith("2026-09-01")
+    tl = (await cl.get(f"/api/kios/{kid}/timeline", headers=H("dimas"))).json()
+    moves = [l for l in tl if l["type"] == "stage" and l["fromStage"] != l["toStage"]]
+    assert [m["toStage"] for m in sorted(moves, key=lambda x: x["at"])] == list(range(0, 9))
+    st = (await cl.get("/api/state", headers=H("dimas"))).json()
+    e = next(x for x in st["kios"] if x["id"] == kid)
+    assert e["daysInStage"] >= 20  # sejak 2026-10-20
+    # gate dilewati saat backfill, tetapi maju tahap normal berikutnya tetap pakai aturan (8→9 butuh RAB)
+    r = await cl.post(f"/api/kios/{kid}/stage", json={"to": 9}, headers=H("dimas"))
+    assert r.status_code == 400 and "RAB" in r.json()["detail"]
+    # direksi: kecepatan per tahap kini punya sampel
+    d = (await cl.get(f"/api/direksi?t={st['settings']['shareToken']}")).json()
+    assert any(x["samples"] > 0 for x in d["stageSpeed"])

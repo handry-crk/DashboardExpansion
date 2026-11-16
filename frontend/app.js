@@ -281,10 +281,11 @@
     const d = k || { stage: 0, status: "ontrack", targetBuka: "", wilayahId: filters.wil ? (S.wilayah.find((w) => w.nama === filters.wil) || {}).id : "" };
     const st = stageOf(d.stage);
     const ro = !canEdit();
+    const canBackfill = !ro && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && k.tindak === "followup" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
     const mayBack = k && k.stage > 0 && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     showDr(`<div class="row"><h3>${k ? esc(k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
-      <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
+      <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""}${k.backfilled ? ' · <span class="pill m">riwayat backdate</span>' : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
       ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Next stage:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
         <div class="row" style="margin-top:8px"><input id="sNote" class="inl" style="flex:1;min-width:160px" placeholder="Catatan update — wajib untuk Blocked / Perlu Perhatian / kembali / alternatif">
@@ -309,6 +310,15 @@
         <div><label>Progres renovasi (%)</label><input id="kPct" type="number" min="0" max="100" value="${d.renovasiPct || 0}" ${ro ? "disabled" : ""}></div>
         <div class="full"><label>Catatan umum</label><textarea id="kNote" ${ro ? "disabled" : ""}>${esc(d.catatan || "")}</textarea></div>
       </div>
+      ${canBackfill ? `<div class="card" style="padding:10px;margin-top:12px"><label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;color:var(--ink);font-size:13px"><input type="checkbox" id="bfOn" style="width:auto;min-height:0" ${k && k.backfilled ? "" : ""}> <b>Input kios berjalan (backdate)</b></label>
+        <div class="note">Untuk kios yang sudah diproses sebelum dashboard ada: pilih tahap saat ini dan isi tanggal masuk tiap tahap yang sudah dilalui. Hari-di-tahap, SLA, dan Report Direksi akan memakai tanggal ini. Syarat data tahap (DP/SPK/RAB) dilewati.</div>
+        <div id="bfBox" class="hide" style="margin-top:8px">
+          <div class="f"><div class="full"><label>Tahap saat ini</label><select id="bfStage">${S.stages.map((st2) => `<option value="${st2.i}" ${st2.i === (k ? k.stage : 0) ? "selected" : ""}>${st2.i + 1}. ${esc(st2.n)}</option>`).join("")}</select></div>
+          <div><label>Status saat ini</label><select id="bfStatus"><option value="ontrack">On Track</option><option value="perhatian">Perlu Perhatian</option><option value="blocked">Blocked</option></select></div>
+          <div><label>Catatan</label><input id="bfNote" placeholder="cth. migrasi dari spreadsheet"></div></div>
+          <div id="bfDates" style="margin-top:8px"></div>
+          <div class="note" style="margin-top:4px">Tanggal yang dikosongkan dianggap dilewati pada tanggal tahap berikutnya. Minimal isi tanggal tahap saat ini.</div>
+        </div></div>` : ""}
       <div class="row" style="margin-top:12px">${!ro ? `<button class="btn" id="bSave">Simpan</button>` : ""}<div class="sp"></div>${k && me.isAdmin ? `<button class="btn g s" id="bDel">Delete</button>` : ""}</div>
       ${k ? `<div style="margin-top:14px"><b>Dokumen & foto</b><div class="note">SPK: ${k.spkFile ? `<a href="${esc(k.spkFile)}" target="_blank">${esc(k.spkFileName || "file SPK")}</a>` : "belum ada"} ${!ro ? `· <label style="display:inline;cursor:pointer;color:var(--red)">upload SPK<input type="file" id="fSpk" class="hide"></label>` : ""}</div>
         <div class="row" style="margin-top:6px">${(k.photos || []).map((p) => `<a href="${esc(p.url)}" target="_blank" class="pill ink">${esc(p.name || "foto")}</a>`).join("")}${!ro ? `<label class="pill" style="cursor:pointer">+ foto<input type="file" id="fPhoto" accept="image/*" capture="environment" class="hide"></label>` : ""}</div></div>
@@ -319,7 +329,23 @@
     const collect = () => ({ nama: $("kNama").value.trim(), wilayahId: $("kWil").value, targetBuka: $("kTarget").value, alamat: $("kAlamat").value.trim(), mapsUrl: $("kMaps").value.trim(), luas: +$("kLuas").value || 0, sewaTahun: +$("kSewa").value || 0, dp: +$("kDp").value || 0, rabNilai: +$("kRab").value || 0, pemilikNama: $("kPemilik").value.trim(), pemilikHp: $("kPemilikHp").value.trim(), vendorNama: $("kVendor").value.trim(), renovasiPct: +$("kPct").value || 0, catatan: $("kNote").value.trim() });
     const save = async () => { const body = collect(); if (!body.nama) throw new Error("Nama kios wajib diisi"); if (!body.wilayahId) throw new Error("Pilih wilayah"); return k ? api(`/api/kios/${k.id}`, { method: "PUT", body }) : api("/api/kios", { method: "POST", body }); };
     const run = async (fn, ok) => { try { await fn(); toast(ok || "Tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } };
-    if ($("bSave")) $("bSave").onclick = () => run(async () => { await save(); closeDr(); });
+    // --- backdate UI
+    const bfDates = () => {
+      const to = +$("bfStage").value; const box = $("bfDates");
+      box.innerHTML = `<div class="f">${S.stages.filter((st2) => st2.i <= to).map((st2) => `<label style="margin:0"><span class="note">${st2.i + 1}. ${esc(st2.n)}${st2.i === to ? " (saat ini, wajib)" : ""}</span><input type="date" class="bfd" data-i="${st2.i}" max="${S.today}" value="${(bfPrefill[st2.i] || "")}"></label>`).join("")}</div>`;
+    };
+    const bfPrefill = {};
+    if (k) { try { const tl = await api(`/api/kios/${k.id}/timeline`); tl.filter((l) => l.type === "stage" && l.fromStage !== l.toStage).forEach((l) => { bfPrefill[l.toStage] = (l.at || "").slice(0, 10); }); } catch (e) { } }
+    if ($("bfOn")) {
+      $("bfOn").onchange = () => { $("bfBox").classList.toggle("hide", !$("bfOn").checked); if ($("bfOn").checked) bfDates(); };
+      $("bfStage").onchange = bfDates;
+    }
+    const backfillBody = () => { const dates = {}; document.querySelectorAll(".bfd").forEach((i) => { if (i.value) dates[i.dataset.i] = i.value; }); return { stage: +$("bfStage").value, dates, status: $("bfStatus").value, note: $("bfNote").value.trim() }; };
+    if ($("bSave")) $("bSave").onclick = () => run(async () => {
+      const saved = await save();
+      if ($("bfOn") && $("bfOn").checked) await api(`/api/kios/${saved.id}/backfill`, { method: "POST", body: backfillBody() });
+      closeDr();
+    }, $("bfOn") && $("bfOn").checked ? "Tersimpan dengan riwayat backdate" : "Tersimpan");
     if ($("bNext")) $("bNext").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage + 1, note: $("sNote").value } }); closeDr(); }, "Stage dimajukan");
     if ($("bBack")) $("bBack").onclick = () => run(async () => { await save(); await api(`/api/kios/${k.id}/stage`, { method: "POST", body: { to: k.stage - 1, note: $("sNote").value } }); closeDr(); }, "Stage dikembalikan");
     if ($("bTindak")) $("bTindak").onclick = () => run(async () => { await api(`/api/kios/${k.id}/tindak`, { method: "POST", body: { tindak: $("sTindak").value, note: $("sNote").value } }); closeDr(); }, "Tindak lanjut ter-update");
