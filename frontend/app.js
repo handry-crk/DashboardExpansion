@@ -281,7 +281,7 @@
     const d = k || { stage: 0, status: "ontrack", targetBuka: "", wilayahId: filters.wil ? (S.wilayah.find((w) => w.nama === filters.wil) || {}).id : "" };
     const st = stageOf(d.stage);
     const ro = !canEdit();
-    const canBackfill = !ro && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
+    const canBackfill = !ro;
     const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && k.tindak === "followup" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
     const mayBack = k && k.stage > 0 && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     showDr(`<div class="row"><h3>${k ? esc(k.stage === 14 && k.namaOutlet ? k.namaOutlet : k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>

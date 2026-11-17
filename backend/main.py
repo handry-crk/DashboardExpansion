@@ -624,8 +624,8 @@ class BackfillIn(BaseModel):
 async def kios_backfill(kid: str, body: BackfillIn, ctx: Ctx = Depends(require_login)):
     """Tulis ulang riwayat perpindahan tahap dengan tanggal historis. Gate dilewati (data lama).
     Hanya SPV / Manager / Admin. Komentar dan log status tetap; log perpindahan tahap lama diganti."""
-    if not (ctx.is_admin or ctx.role in ("Manager", "SPV")):
-        err(403, "Hanya SPV / Manager / Admin yang dapat mengisi riwayat backdate")
+    if not can_edit(ctx):
+        err(403, "Role Anda tidak dapat mengisi riwayat backdate")
     k = await db.get("kios", kid)
     if not k:
         err(404, "Kios tidak ditemukan")

@@ -346,9 +346,11 @@ async def test_tindak_lanjut(cl):
 async def test_backfill_history(cl):
     r = await cl.post("/api/kios", json={"nama": "Kios Lama Cimahi", "wilayahId": T["wid"]}, headers=H("rani"))
     kid = r.json()["id"]
-    # Surveyor tidak boleh backfill
+    # Surveyor boleh backfill (input kios lama); hanya aturan tanggal yang dicek
     r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"8": "2026-10-20"}}, headers=H("rani"))
-    assert r.status_code == 403
+    assert r.status_code == 200
+    r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 0, "dates": {"0": "2026-10-20"}}, headers=H("rani"))
+    assert r.status_code == 200  # kembalikan ke kandidat untuk uji berikutnya
     # tanggal masa depan / urutan salah ditolak
     r = await cl.post(f"/api/kios/{kid}/backfill", json={"stage": 8, "dates": {"8": "2099-01-01"}}, headers=H("dimas"))
     assert r.status_code == 400
