@@ -285,7 +285,7 @@
     const mayAdvance = k && k.stage < 14 && k.status !== "alternatif" && k.tindak === "followup" && (me.isAdmin || ["Manager", "SPV"].includes(me.role) || st.roles.includes(me.role));
     const mayBack = k && k.stage > 0 && (me.isAdmin || ["Manager", "SPV"].includes(me.role));
     showDr(`<div class="row"><h3>${k ? esc(k.stage === 14 && k.namaOutlet ? k.namaOutlet : k.nama) : "Kios baru"}</h3><div class="sp"></div><button class="btn g s" id="dClose">Tutup</button></div>
-      <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""}${k.backfilled ? ' · <span class="pill m">riwayat backdate</span>' : ""} ${flags(k)}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
+      <div class="note" style="margin:4px 0 10px">${k ? `${esc(k.kode)} · ${esc(k.stageName)} · PIC ${esc(k.stagePic)} · ${k.daysInStage} hari di tahap${k.sla ? ` (SLA ${k.sla} hari)` : ""}${k.backfilled ? ' · <span class="pill m">riwayat backdate</span>' : ""} ${flags(k)}${canBackfill && k.stage < 14 ? ' · <a href="#" id="bfOpen">isi riwayat backdate</a>' : ""}` : "Masukkan kandidat kios dari hasil pencarian (PIC Surveyor)"}</div>
       ${k ? `<div class="steps">${S.stages.map((s) => `<span class="${s.i < k.stage ? "done" : s.i === k.stage ? "cur" : ""}" title="${esc(s.n)}">${s.i + 1}</span>`).join("")}</div>` : ""}
       ${k && k.stage < 14 ? `<div class="card" style="padding:10px;margin-bottom:12px"><b>Next stage:</b> ${esc(k.nextStage)} <span class="pill">${esc(k.nextPic)}</span>
         <div class="row" style="margin-top:8px"><input id="sNote" class="inl" style="flex:1;min-width:160px" placeholder="Catatan update — wajib untuk Blocked / Perlu Perhatian / kembali / alternatif">
@@ -330,16 +330,23 @@
     const collect = () => ({ nama: $("kNama").value.trim(), namaOutlet: $("kOutlet").value.trim(), wilayahId: $("kWil").value, targetBuka: $("kTarget").value, alamat: $("kAlamat").value.trim(), mapsUrl: $("kMaps").value.trim(), luas: +$("kLuas").value || 0, sewaTahun: +$("kSewa").value || 0, dp: +$("kDp").value || 0, rabNilai: +$("kRab").value || 0, pemilikNama: $("kPemilik").value.trim(), pemilikHp: $("kPemilikHp").value.trim(), vendorNama: $("kVendor").value.trim(), renovasiPct: +$("kPct").value || 0, catatan: $("kNote").value.trim() });
     const save = async () => { const body = collect(); if (!body.nama) throw new Error("Nama kios wajib diisi"); if (!body.wilayahId) throw new Error("Pilih wilayah"); return k ? api(`/api/kios/${k.id}`, { method: "PUT", body }) : api("/api/kios", { method: "POST", body }); };
     const run = async (fn, ok) => { try { await fn(); toast(ok || "Tersimpan"); await refresh(true); } catch (e) { toast(e.message, true); } };
-    // --- backdate UI
+    // --- backdate UI (handler dipasang dulu, riwayat dimuat belakangan agar tidak menunggu jaringan)
+    const bfPrefill = {};
     const bfDates = () => {
       const to = +$("bfStage").value; const box = $("bfDates");
       box.innerHTML = `<div class="f">${S.stages.filter((st2) => st2.i <= to).map((st2) => `<label style="margin:0"><span class="note">${st2.i + 1}. ${esc(st2.n)}${st2.i === to ? " (saat ini, wajib)" : ""}</span><input type="date" class="bfd" data-i="${st2.i}" max="${S.today}" value="${(bfPrefill[st2.i] || "")}"></label>`).join("")}</div>`;
     };
-    const bfPrefill = {};
-    if (k) { try { const tl = await api(`/api/kios/${k.id}/timeline`); tl.filter((l) => l.type === "stage" && l.fromStage !== l.toStage).forEach((l) => { bfPrefill[l.toStage] = (l.at || "").slice(0, 10); }); } catch (e) { } }
+    const bfToggle = (on) => { if (!$("bfOn")) return; $("bfOn").checked = on; $("bfBox").classList.toggle("hide", !on); if (on) { bfDates(); $("bfStage").dispatchEvent(new Event("change")); $("bfBox").scrollIntoView({ block: "center", behavior: "smooth" }); } };
     if ($("bfOn")) {
-      $("bfOn").onchange = () => { $("bfBox").classList.toggle("hide", !$("bfOn").checked); if ($("bfOn").checked) bfDates(); };
+      $("bfOn").onchange = () => bfToggle($("bfOn").checked);
       $("bfStage").onchange = () => { bfDates(); const op = +$("bfStage").value === 14; $("bfStatus").disabled = op; if (op) $("bfStatus").value = "ontrack"; $("bfHint").textContent = op ? "Beroperasi: isi kolom Nama outlet di atas; tanggal tahap 15 menjadi tanggal buka resmi (masuk grafik Pembukaan per Bulan dan hitungan DP → buka)." : ""; };
+      if ($("bfOpen")) $("bfOpen").onclick = (e) => { e.preventDefault(); bfToggle(true); };
+    }
+    if (k) {
+      api(`/api/kios/${k.id}/timeline`).then((tl) => {
+        tl.filter((l) => l.type === "stage" && l.fromStage !== l.toStage).forEach((l) => { bfPrefill[l.toStage] = (l.at || "").slice(0, 10); });
+        if ($("bfOn") && $("bfOn").checked) document.querySelectorAll(".bfd").forEach((i) => { if (!i.value && bfPrefill[i.dataset.i]) i.value = bfPrefill[i.dataset.i]; });
+      }).catch(() => { });
     }
     const backfillBody = () => { const dates = {}; document.querySelectorAll(".bfd").forEach((i) => { if (i.value) dates[i.dataset.i] = i.value; }); return { stage: +$("bfStage").value, dates, status: $("bfStatus").value, note: $("bfNote").value.trim() }; };
     if ($("bSave")) $("bSave").onclick = () => run(async () => {
